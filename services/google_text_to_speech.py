@@ -82,8 +82,9 @@ class GoogleSpeechService:
             )
 
 
-        update_progress_message("Beginning Speech Recognition")
-        response = self.client.recognize(config=config, audio=audio)
+        update_progress_message("Beginning Speech Recognition - might take a while....")
+        operation = self.client.long_running_recognize(config=config, audio=audio)
+        response = operation.result(timeout=180)
         update_progress_message("Speech Recognition Complete!")
 
         # For diarization results: response.results[-1].alternatives[0].words

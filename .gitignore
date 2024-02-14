@@ -1,2 +1,5 @@
-viranova-firebase-serivce-account.json
+viranova-firebase-service-account.json
 .env
+.idea/*
+__pycache__/*
+*/__pycache__/
