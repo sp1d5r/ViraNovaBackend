@@ -18,7 +18,6 @@ def split_video_to_audio_and_video(video_id: str):
     is_valid_document, error_message = parse_and_verify_video(video_document)
 
     if is_valid_document:
-        firebase_service.update_document('videos', video_id, {'status': "Transcribing"})
         firebase_service.update_document('videos', video_id, {'progressMessage': "Splitting audio from video."})
         print("Updated document ")
         file_storage_path = video_document['videoPath']
@@ -27,7 +26,7 @@ def split_video_to_audio_and_video(video_id: str):
         video_downloaded = firebase_service.download_file_to_memory(file_storage_path)
         audio_bytes = extract_audio_from_video(video_downloaded)
         firebase_service.update_document('videos', video_id, {'progressMessage': "Audio split - uploading to firebase."})
-        audio_blob_name = "audio/" + video_document['originalFileName'].replace('.mp4', '_audio.mp4')
+        audio_blob_name = "audio/" + video_document['originalFileName'].replace('.mp4', '_audio.wav')
         firebase_service.upload_audio_file_from_memory(audio_blob_name, audio_bytes)
         firebase_service.update_document('videos', video_id, {
             'processingProgress': 50,
@@ -37,6 +36,7 @@ def split_video_to_audio_and_video(video_id: str):
         firebase_service.update_document('videos', video_id,
                                          {'progressMessage': "Audio file uploaded."})
 
+        firebase_service.update_document('videos', video_id, {'status': "Transcribing"})
         return "Converted Video", 200
     else:
         return error_message, 404
@@ -45,6 +45,7 @@ def split_video_to_audio_and_video(video_id: str):
 @app.route("/transcribe-and-diarize/<video_id>")
 def transcribe_and_diarize(video_id: str):
     # Access video document and verify existance
+    print("Starting to ")
     firebase_service = FirebaseService()
     tts_service = GoogleSpeechService()
     video_document = firebase_service.get_document("videos", video_id)
@@ -76,6 +77,7 @@ def transcribe_and_diarize(video_id: str):
         update_progress_message("Transcription and Diarization Complete...")
 
         # Return the response as JSON
+        firebase_service.update_document('videos', video_id, {'status': "Segmenting"})
         return jsonify({"transcript_data": transcript_data, "word_data": word_data}), 200
 
     else:
@@ -96,7 +98,6 @@ def extract_topical_segments(video_id: str):
 
     if is_valid_document:
         update_progress(0)
-        firebase_service.update_document("videos", video_id, {'status': 'Segmenting'})
         update_progress_message("Determining the video topics...")
         transcripts = firebase_service.query_transcripts_by_video_id(video_id)
         print(transcripts)
@@ -109,11 +110,11 @@ def extract_topical_segments(video_id: str):
 
         update_progress_message("Uploading segments to database")
         for index, segment in enumerate(segments):
-            update_progress(index/(len(segments) - 1) * 100)
+            update_progress((index+1)/len(segments) * 100)
             firebase_service.add_document("topical_segments", segment)
 
         update_progress_message("Finished Segmenting Video!")
-
+        firebase_service.update_document('videos', video_id, {'status': "Summarizing Segments"})
         return segments, 200
     else:
         return error_message, 404
@@ -133,20 +134,16 @@ def summarise_segments(video_id):
 
     if is_valid_document:
         update_progress(0)
-        firebase_service.update_document("videos", video_id, {'status': 'Summarizing Segments'})
         update_progress_message("Segmenting Topical Segments")
         segments = firebase_service.query_topical_segments_by_video_id(video_id)
-
         update_progress_message("Retrieved Segments, Summarising...")
-        summarised_segments = []
-
         previous_segment_summary = ""
         for index, segment in enumerate(segments):
-            update_progress((index+1) / len(segments)  * 100)
+            update_progress((index+1) / len(segments) * 100)
             summary = open_ai_service.get_segment_summary(segment['index'], segment['transcript'], previous_segment_summary)
             content_moderation = open_ai_service.extract_moderation_metrics(segment['transcript'])
             segment_summary = summary['segment_summary']
-            previous_segment_summary = summary['new_combined_summary']
+            previous_segment_summary = summary.get("new_combined_summary", previous_segment_summary)
             update_progress_message("Description: " + segment_summary[:20] + "...")
             firebase_service.update_document("topical_segments", segment["id"],
                                              {
@@ -163,10 +160,16 @@ def summarise_segments(video_id):
                                               })
 
         update_progress_message("Segments Summarised!")
+        firebase_service.update_document("videos", video_id, {'status': 'Preprocessing Complete'})
         return segments, 200
     else:
         return error_message, 404
 
 
+@app.route("/")
+def main_route():
+    return "Viranova Backend"
+
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(port=5000, debug=False)

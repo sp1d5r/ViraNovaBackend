@@ -1,0 +1,27 @@
+name: Build and Push Docker image
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out the repo
+      uses: actions/checkout@v2
+
+    - name: Log in to Digital Ocean Container Registry
+      uses: docker/login-action@v1
+      with:
+        registry: registry.digitalocean.com
+        username: _  # Digital Ocean CR uses a static username '_'
+        password: ${{ secrets.DO_ACCESS_TOKEN }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v2
+      with:
+        context: .
+        push: true
+        tags: registry.digitalocean.com/viranova-container/viranovabackend:latest

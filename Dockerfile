@@ -1,25 +1,30 @@
-# Use an official Python runtime as a parent image
+# Use an official Python runtime as a base image
 FROM python:3.8-slim
 
-# Set the working directory in the container
+# Set the working directory in the container to /app
 WORKDIR /app
 
 # Copy the current directory contents into the container at /app
 COPY . /app
 
 # Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Including Gunicorn, Firebase Admin SDK, Google Cloud Text-to-Speech, OpenAI, and Flask
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install gunicorn firebase-admin google-cloud-texttospeech openai Flask
+
+# Install FFMPEG
+RUN apt-get update && \
+    apt-get install -y ffmpeg && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 
 # Make port 5000 available to the world outside this container
 EXPOSE 5000
 
-# Define environment variable
+# Define environment variable to specify the Flask application
 ENV FLASK_APP=app.py
-ENV FLASK_RUN_HOST=0.0.0.0
 
-# Install Firebase Admin SDK, Google Cloud Text-to-Speech, and any other dependencies
-# This assumes you have a requirements.txt. If not, you need to install dependencies manually using pip install
-RUN pip install firebase-admin google-cloud-texttospeech openai Flask
-
-# Run app.py when the container launches
-CMD ["flask", "run"]
+# Use Gunicorn to serve the Flask app. Adjust the number of workers and threads as necessary.
+# Replace 'app:app' with 'your_flask_app_module:app' if your application's instance is named differently
+CMD ["gunicorn", "-b", "0.0.0.0:5000", "app:app"]

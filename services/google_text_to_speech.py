@@ -58,8 +58,8 @@ class GoogleSpeechService:
         :param diarization_speaker_count: The number of speakers in the audio file.
         :return: The transcription result.
         """
-        print("gs://"+self.storage_bucket + audio_path)
-        audio = speech.RecognitionAudio(uri="gs://"+self.storage_bucket + "/" + audio_path)
+        audio = speech.RecognitionAudio(uri="gs://" + self.storage_bucket + "/" + audio_path)
+        print(audio)
 
         if enable_diarization:
             diarization_config = speech.SpeakerDiarizationConfig(
@@ -81,11 +81,13 @@ class GoogleSpeechService:
                 language_code=language,
             )
 
-
-        update_progress_message("Beginning Speech Recognition - might take a while....")
-        operation = self.client.long_running_recognize(config=config, audio=audio)
-        response = operation.result(timeout=180)
-        update_progress_message("Speech Recognition Complete!")
+        try:
+            update_progress_message("Beginning Speech Recognition - might take a while....")
+            operation = self.client.long_running_recognize(config=config, audio=audio)
+            response = operation.result(timeout=600)
+            update_progress_message("Speech Recognition Complete!")
+        except Exception as e:
+            update_progress_message("Failed to conduct speech recognition: " + str(e))
 
         # For diarization results: response.results[-1].alternatives[0].words
         for index, result in enumerate(response.results):

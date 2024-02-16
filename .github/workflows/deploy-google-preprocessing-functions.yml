@@ -1,0 +1,33 @@
+name: Deploy Preprocessing Function
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Google Cloud
+      uses: google-github-actions/setup-gcloud@v0
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        project_id: ${{ secrets.PROJECT_ID }}
+        export_default_credentials: true
+
+    - name: Deploy to Google Cloud Functions
+      run: |
+        gcloud functions deploy preprocess_video_documents \
+          --runtime python39 \
+          --trigger-event providers/cloud.firestore/eventTypes/document.write \
+          --trigger-resource "projects/${{ secrets.PROJECT_ID }}/databases/(default)/documents/videos/{documentId}" \
+          --set-env-vars BACKEND_SERVICE_ADDRESS=${{ secrets.BACKEND_SERVICE_ADDRESS }} \
+          --region europe-west3 \
+          --entry-point preprocess_video_documents
+      env:
+        BACKEND_SERVICE_ADDRESS: ${{ secrets.BACKEND_SERVICE_ADDRESS }}
+      working-directory: /google-functions/preprocess-functions/  # Adjust this to the correct path

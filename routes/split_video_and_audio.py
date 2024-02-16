@@ -10,7 +10,7 @@ def extract_audio_from_video(video_bytes):
         tmp_video.write(video_bytes.getbuffer())
 
     # Define the temporary audio file name
-    tmp_audio_name = tmp_video_name.replace('.mp4', '_audio.mp4')
+    tmp_audio_name = tmp_video_name.replace('.mp4', '_audio.wav')
 
     # Use FFmpeg to extract audio
     subprocess.run([
