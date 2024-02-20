@@ -3,3 +3,4 @@ viranova-firebase-service-account.json
 .idea/*
 __pycache__/*
 */__pycache__/
+scripts/*

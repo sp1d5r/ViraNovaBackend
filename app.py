@@ -54,11 +54,11 @@ def transcribe_and_diarize(video_id: str):
                                          {'progressMessage': x})
     update_progress = lambda x: firebase_service.update_document('videos', video_id,
                                                                          {'processingProgress': x})
-
-    update_progress(0)
-    update_progress_message("Beginning Transcribing.")
     if is_valid_document and "audio_path" in video_document:
         audio_path = video_document['audio_path']
+
+        update_progress(0)
+        update_progress_message("Beginning Transcribing.")
 
         diarized = True
         transcribed_content = tts_service.transcribe_gcs(
@@ -144,10 +144,12 @@ def summarise_segments(video_id):
             content_moderation = open_ai_service.extract_moderation_metrics(segment['transcript'])
             segment_summary = summary['segment_summary']
             previous_segment_summary = summary.get("new_combined_summary", previous_segment_summary)
+            segment_title = summary.get('segment_title', "Unable to name segment")
             update_progress_message("Description: " + segment_summary[:20] + "...")
             firebase_service.update_document("topical_segments", segment["id"],
                                              {
                                                 'segment_summary': segment_summary,
+                                                 'segment_title': segment_title,
                                                 'flagged': content_moderation['flagged'],
                                                 "harassment": content_moderation["harassment"],
                                                 "harassment_threatening": content_moderation["harassment_threatening"],

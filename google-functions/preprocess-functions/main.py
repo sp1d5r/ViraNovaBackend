@@ -1,24 +1,42 @@
-import requests
+from google.cloud import tasks_v2
+from google.protobuf import timestamp_pb2
+import datetime
+import json
+from google.protobuf import duration_pb2
 
-import threading
+def create_client():
+    # Creates a client for the Cloud Tasks service.
+    return tasks_v2.CloudTasksClient()
 
-def process_video_upload(ip_address, api_route, video_id):
-    def make_request():
-        url = f'{ip_address}/{api_route}/{video_id}'
-        print("Making Request to: ", url)
+def create_task(client, project, queue, location, url):
+    # Construct the fully qualified queue name.
+    parent = client.queue_path(project, location, queue)
 
-        # Make a GET request to the API
-        try:
-            response = requests.get(url, timeout=10)  # Adding a timeout for good practice
-            print(f"Request to {url} sent successfully.")
-        except requests.RequestException as e:
-            print(f"Failed to send request to {url}: {e}")
+    task = {
+        'http_request': {
+            'http_method': tasks_v2.HttpMethod.GET,
+            'url': url
+        },
+    }
+    # Add the task to the created queue.
+    response = client.create_task(request={"parent": parent, "task": task})
+    print('Task: ', task)
+    print('Task created: {}'.format(response.name))
 
-    # Start a new thread for the request
-    thread = threading.Thread(target=make_request)
-    thread.start()
-    print(f"Request to {api_route} for video ID {video_id} is being processed in the background.")
+def process_video_upload(project_id, ip_address, api_route, video_id):
+    # Setup your Google Cloud project details
+    project = project_id  # Replace with your GCP project ID
+    queue = 'viranova-preprocessing-queue'  # The name of your queue
+    location = 'europe-west3'  # The location of your queue
 
+    # The URL you want the task to request
+    url = f'{ip_address}/{api_route}/{video_id}'
+
+    # Create a Cloud Tasks client
+    client = create_client()
+
+    # Create and add a task to the queue
+    create_task(client, project, queue, location, url)
 
 def preprocess_video_documents(event, context):
     """
@@ -36,6 +54,7 @@ def preprocess_video_documents(event, context):
 
     # Get Backend IP Address
     ip_address = os.getenv("BACKEND_SERVICE_ADDRESS")
+    project_id = os.getenv("PROJECT_ID")
     # Setup Firestore client
     db = google.cloud.firestore.Client()
 
@@ -61,9 +80,7 @@ def preprocess_video_documents(event, context):
 
         if new_status in status_route_mapping:
             api_route = status_route_mapping[new_status]
-            process_video_upload(ip_address, api_route, document_id)
+            process_video_upload(project_id, ip_address, api_route, document_id)
     else:
-        print("Data: ", data != None)
-        print("Status in data", 'status' in data)
-        print("Previous Status in data", 'previousStatus' in data)
+        print("Preprocessing stage triggered... Nothing happened.")
 

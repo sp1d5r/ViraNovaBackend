@@ -104,13 +104,17 @@ class OpenAIService():
                 "type": "function",
                 "function": {
                     "name": "summarise_segment",
-                    "description": "Summarise the segment given, update the previous segment summary to now include the information captured information from the new segment.",
+                    "description": "Summarise the segment given, update the previous segment summary to now include the information captured information from the new segment, and finally give a catchy fun name to the new segment.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "segment_summary": {
                                 "type": "string",
                                 "description": "The summary of the current segment provided",
+                            },
+                            "segment_title": {
+                                "type": "string",
+                                "description": "The title to the new segment."
                             },
                             "new_combined_summary": {
                                 "type": "string",
@@ -132,7 +136,7 @@ class OpenAIService():
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system",
-                 "content": "You are a topical segment describer. Your goal is to take in a video transcript, segment index, and a subset of the diarized transcript, and call the function summarise_segment. For the parameters, provide a summary of the segment in the parameter segment_summary try to include information that stands out in the example segment. For new_combined_summary parameter investigate the Previous Segments Summary and update it to include some information about what we've learned from the new segment, this summary should be a lot more brief and will be used to understand what's occured in the video so far.."},
+                 "content": "You are a topical segment describer. Your goal is to take in a video transcript, segment index, and a subset of the diarized transcript, and call the function summarise_segment. For the parameters, provide a summary of the segment in the parameter segment_summary try to include information that stands out in the example segment. For the segment_title, give a fun exciting name for the segment. For new_combined_summary parameter investigate the Previous Segments Summary and update it to include some information about what we've learned from the new segment, this summary should be a lot more brief and will be used to understand what's occured in the video so far.."},
                 {"role": "user", "content": prompt}
             ],
             tools=tools,

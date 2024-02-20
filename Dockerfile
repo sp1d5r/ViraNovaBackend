@@ -27,4 +27,4 @@ ENV FLASK_APP=app.py
 
 # Use Gunicorn to serve the Flask app. Adjust the number of workers and threads as necessary.
 # Replace 'app:app' with 'your_flask_app_module:app' if your application's instance is named differently
-CMD ["gunicorn", "-b", "0.0.0.0:5000", "app:app"]
+CMD ["gunicorn", "-b", "0.0.0.0:5000", "--timeout", "1800", "app:app"]

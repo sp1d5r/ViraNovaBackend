@@ -1,3 +1,5 @@
+import time
+
 from google.cloud import speech
 from google.oauth2 import service_account
 from dotenv import load_dotenv
@@ -84,14 +86,33 @@ class GoogleSpeechService:
         try:
             update_progress_message("Beginning Speech Recognition - might take a while....")
             operation = self.client.long_running_recognize(config=config, audio=audio)
-            response = operation.result(timeout=600)
+            def check_operation_progress(operation):
+                """Polls the operation's progress and updates the user interface accordingly."""
+                try:
+                    if operation.metadata is not None and hasattr(operation.metadata, 'progress_percent'):
+                        progress = operation.metadata.progress_percent
+                        update_progress(progress)
+                        update_progress_message(f"Current Progress: {progress}%")
+                    else:
+                        update_progress_message("Waiting for progress update...")
+                except Exception as e:
+                    update_progress_message("Error checking progress: " + str(e))
+
+            while not operation.done():
+                check_operation_progress(operation)
+                time.sleep(5)  # Adjust sleep time as appropriate
+
+            response = operation.result()
+            # Once done, you can handle the final result within the callback or after the loop if synchronous handling
+            # is preferred.
             update_progress_message("Speech Recognition Complete!")
         except Exception as e:
             update_progress_message("Failed to conduct speech recognition: " + str(e))
+            return
 
         # For diarization results: response.results[-1].alternatives[0].words
         for index, result in enumerate(response.results):
-            update_progress(index / (len(response.results) - 1) * 100)
+            update_progress((index + 1) / len(response.results) * 100)
             print("Transcript: {}".format(result.alternatives[0].transcript))
             if enable_diarization:
                 # Show speaker tags if diarization is enabled
