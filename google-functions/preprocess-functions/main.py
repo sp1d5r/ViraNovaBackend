@@ -1,5 +1,24 @@
 import requests
 
+import threading
+
+def process_video_upload(ip_address, api_route, video_id):
+    def make_request():
+        url = f'{ip_address}/{api_route}/{video_id}'
+        print("Making Request to: ", url)
+
+        # Make a GET request to the API
+        try:
+            response = requests.get(url, timeout=10)  # Adding a timeout for good practice
+            print(f"Request to {url} sent successfully.")
+        except requests.RequestException as e:
+            print(f"Failed to send request to {url}: {e}")
+
+    # Start a new thread for the request
+    thread = threading.Thread(target=make_request)
+    thread.start()
+    print(f"Request to {api_route} for video ID {video_id} is being processed in the background.")
+
 
 def preprocess_video_documents(event, context):
     """
@@ -26,21 +45,6 @@ def preprocess_video_documents(event, context):
     data = changed_doc.to_dict()
     document_id = doc_path.split('/')[-1]
 
-    def process_video_upload(ip_address, api_route, video_id):
-        # Example API endpoint
-        url = f'{ip_address}/{api_route}/{video_id}'
-        print("Making Request to: ", url)
-
-        # Make a GET request to the API
-        response = requests.get(url)
-
-        # Check if the request was successful
-        if response.status_code == 200:
-            # Process the response data (assuming JSON)
-            data = response.json()
-            return f"Success: {data}"
-        else:
-            return f"Failed to fetch data, status code: {response.status_code}"
 
     if data and 'status' in data and 'previousStatus' in data and data['status'] != data['previousStatus']:
         new_status = data['status']
