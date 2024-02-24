@@ -2,12 +2,28 @@ from flask import Flask, jsonify
 from services.firebase import FirebaseService
 from services.google_text_to_speech import GoogleSpeechService
 from services.open_ai import OpenAIService
+from services.segmentation_loader import load_video_data
 from routes.split_video_and_audio import extract_audio_from_video
 from routes.verify_video_document import parse_and_verify_video
 from routes.determine_topic_boundaries import get_transcript_topic_boundaries, create_segments
+import numpy as np
+import os
+import random
+from flask_cors import CORS
+
 
 app = Flask(__name__)
 
+origins = [
+    "http://localhost:3000",
+    "https://master.d2gor5eji1mb54.amplifyapp.com"
+]
+
+
+VIDEO_FOLDER = '/viranova_storage/'
+
+
+CORS(app, resources={r"/*": {"origins": origins}})
 
 @app.route('/split-video/<video_id>')
 def split_video_to_audio_and_video(video_id: str):
@@ -166,6 +182,43 @@ def summarise_segments(video_id):
         return segments, 200
     else:
         return error_message, 404
+
+@app.route("/get-random-video")
+def get_random_video():
+    try:
+        # List all files in the video directory
+        files = os.listdir(VIDEO_FOLDER)
+        # Filter out files to ensure we only get video files if needed
+        video_files = [file for file in files if file.lower().endswith(('.hdf5', '.h5'))]
+        if not video_files:
+            return "No video files found", 404
+        random_video = random.choice(video_files)
+        return {"video_file": random_video}
+    except Exception as e:
+        return str(e), 500
+
+
+def convert(obj):
+    if isinstance(obj, np.generic):
+        return obj.item()
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, list):
+        return [convert(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {key: convert(value) for key, value in obj.items()}
+    else:
+        return obj
+
+
+@app.route("/load-segmentation-from-file/<video_file>/")
+def return_segmentation_masks(video_file: str):
+    try:
+        video_handler = load_video_data(VIDEO_FOLDER + video_file)
+        video_handler = convert(video_handler)
+        return jsonify(video_handler)
+    except Exception as e:
+        return str(e), 500
 
 
 @app.route("/")
