@@ -1,5 +1,6 @@
 import time
-
+import base64
+import json
 from google.cloud import speech
 from google.oauth2 import service_account
 from dotenv import load_dotenv
@@ -8,8 +9,17 @@ import os
 load_dotenv()
 
 class GoogleSpeechService:
-    def __init__(self, credentials_path='./viranova-firebase-service-account.json'):
-        self.credentials = service_account.Credentials.from_service_account_file(credentials_path)
+    def __init__(self):
+        # Decode the base64 encoded service account JSON string
+        encoded_json_str = os.getenv('SERVICE_ACCOUNT_ENCODED')
+        if not encoded_json_str:
+            raise ValueError("SERVICE_ACCOUNT_ENCODED environment variable not set.")
+        json_str = base64.b64decode(encoded_json_str).decode('utf-8')
+        service_account_info = json.loads(json_str)
+
+        # Initialize credentials and client
+        self.credentials = service_account.Credentials.from_service_account_info(service_account_info)
+        self.client = speech.SpeechClient(credentials=self.credentials)
         self.client = speech.SpeechClient(credentials=self.credentials)
         self.storage_bucket = os.getenv('FIREBASE_STORAGE_BUCKET')
 
