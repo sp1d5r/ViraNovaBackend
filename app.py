@@ -15,8 +15,10 @@ from flask_cors import CORS
 app = Flask(__name__)
 
 origins = [
-    "http://localhost:3000",
-    "https://master.d2gor5eji1mb54.amplifyapp.com"
+    "http://localhost:3000/segmentation",
+    "https://master.d2gor5eji1mb54.amplifyapp.com",
+    "http://localhost:5000",
+    "http://127.0.0.1:5000"
 ]
 
 
@@ -100,6 +102,67 @@ def transcribe_and_diarize(video_id: str):
         return error_message, 404
 
 
+def create_fixed_length_transcripts(transcripts_with_words, n=100):
+    # List to hold the new fixed-length transcripts
+    fixed_length_transcripts = []
+
+    for transcript in transcripts_with_words:
+        words = transcript['words']
+        # Temporary storage for the current window of words
+        window_words = []
+        for i in range(len(words)):
+            window_words.append(words[i])
+            if len(window_words) == n or i == len(words) - 1:
+                # Extract start time from the first word in the window
+                start_time = window_words[0]['start_time'] if window_words[0]['start_time'] is not None else 0
+                # Extract end time from the last word in the window
+                end_time = window_words[-1]['end_time']
+                # Compile the window words into a transcript text
+                transcript_text = " ".join([word['word'] for word in window_words])
+                # Append the fixed-length transcript segment to the list
+                fixed_length_transcripts.append({
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'transcript': transcript_text
+                })
+                # Clear the window for the next segment
+                window_words = []
+
+    return fixed_length_transcripts
+
+
+@app.route("/deal-with-topical-segments/<video_id>")
+def deal_with_topical_segments(video_id: str):
+    print("Here")
+    firebase_service = FirebaseService()
+    open_ai_service = OpenAIService()
+    video_document = firebase_service.get_document("videos", video_id)
+    is_valid_document, error_message = parse_and_verify_video(video_document)
+    update_progress_message = lambda x: firebase_service.update_document('videos', video_id,
+                                                                         {'progressMessage': x})
+    update_progress = lambda x: firebase_service.update_document('videos', video_id,
+                                                                 {'processingProgress': x})
+
+    if is_valid_document:
+        transcripts = firebase_service.query_transcripts_by_video_id_with_words(video_id)
+        custom_transcript = create_fixed_length_transcripts(transcripts, n=10)
+        embeddings = open_ai_service.get_embeddings(custom_transcript, update_progress)
+        boundaries = get_transcript_topic_boundaries(embeddings, update_progress, update_progress_message)
+        print(boundaries)
+
+        segments = create_segments(custom_transcript, boundaries, video_id, update_progress, update_progress_message)
+
+        update_progress_message("Uploading segments to database")
+        for index, segment in enumerate(segments):
+            update_progress((index + 1) / len(segments) * 100)
+            firebase_service.add_document("topical_segments", segment)
+
+        update_progress_message("Finished Segmenting Video!")
+        firebase_service.update_document('videos', video_id, {'status': "Summarizing Segments"})
+        return segments, 200
+    else:
+        return error_message, 404
+
 @app.route("/extract-topical-segments/<video_id>")
 def extract_topical_segments(video_id: str):
     # Access video document and verify existance
@@ -147,11 +210,13 @@ def summarise_segments(video_id):
                                                                          {'progressMessage': x})
     update_progress = lambda x: firebase_service.update_document('videos', video_id,
                                                                  {'processingProgress': x})
-
+    print("Here")
     if is_valid_document:
+        print("Valid document")
         update_progress(0)
         update_progress_message("Segmenting Topical Segments")
         segments = firebase_service.query_topical_segments_by_video_id(video_id)
+        print(segments)
         update_progress_message("Retrieved Segments, Summarising...")
         previous_segment_summary = ""
         for index, segment in enumerate(segments):

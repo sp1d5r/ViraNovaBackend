@@ -47,7 +47,8 @@ def get_segment_embeddings(video_id, segmented_df, step=7, step_size=7):
 
 class OpenAIService():
     def __init__(self):
-        self.key = os.getenv("OPEN_AI_KEY") # Replace this with the users API key
+        self.key = os.getenv("OPENAI_API_KEY")  # Replace this with the users API key
+        # print(self.key)
         self.client = OpenAI(
             api_key=self.key,
         )
@@ -56,24 +57,31 @@ class OpenAIService():
         total_transcripts = len(transcripts)
         embeddings_recorded = []
         for start in range(0, total_transcripts, step):
-            update_progress(start/total_transcripts * 100)
-            end = start + step_size
-            end = min(end, total_transcripts)
+            try:
+                update_progress(start / total_transcripts * 100)
+                end = start + step_size
+                end = min(end, total_transcripts)
 
-            transcript_chunk = [transcripts[i]['transcript'] for i in range(start, end)]
-            transcript_chunk_content = " ".join(transcript_chunk)
+                transcript_chunk = [transcripts[i]['transcript'] for i in range(start, end)]
+                transcript_chunk_content = " ".join(transcript_chunk)
 
-            # Simulate getting the embeddings for the chunk (replace with actual API calls)
-            response = self.client.embeddings.create(
-                input=transcript_chunk_content,
-                model="text-embedding-3-small"
-            )
-            embedding_response = response.json()
-            embedding_json = json.loads(embedding_response)
-            text_embedding = embedding_json['data'][0]['embedding']
+                # Simulate getting the embeddings for the chunk (replace with actual API calls)
+                response = self.client.embeddings.create(
+                    input=transcript_chunk_content,
+                    model="text-embedding-3-small"
+                )
+                embedding_response = response.json()
+                embedding_json = json.loads(embedding_response)
+                text_embedding = embedding_json['data'][0]['embedding']
 
-            # Store the embeddings
-            embeddings_recorded.extend([text_embedding] * step)
+                # Store the embeddings
+                embeddings_recorded.extend([text_embedding] * step)
+                time.sleep(3)
+
+            except Exception as e:
+                print(f"An unexpected error occurred: {str(e)}")
+                # Handle other exceptions appropriately
+
         # Truncate the embeddings list to match the DataFrame length if it's longer
         embeddings_recorded = embeddings_recorded[:total_transcripts]
         return embeddings_recorded

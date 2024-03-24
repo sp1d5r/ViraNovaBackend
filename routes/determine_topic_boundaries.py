@@ -72,19 +72,19 @@ def get_transcript_topic_boundaries(embeddings, update_progress, update_progress
     return boundaries
 
 
-def create_segments(transcripts, boundaries, update_progress, update_progress_message):
+def create_segments(fixed_length_transcripts, boundaries, video_id, update_progress, update_progress_message):
     segments = []
     current_segment_transcripts = []
     start_index = 0
     earliest_start_time = None
     latest_end_time = None
-    video_id = None
 
     update_progress_message("Creating new segments")
 
-    for i, (transcript, boundary) in enumerate(zip(transcripts, boundaries)):
+    for i, (transcript, boundary) in enumerate(zip(fixed_length_transcripts, boundaries)):
         # Initialize for the first segment or new segment
-        update_progress(i/(len(transcripts)-1) * 100)
+        update_progress(i / (len(fixed_length_transcripts) - 1) * 100)
+
         if boundary == 1 or i == 0:
             if current_segment_transcripts:
                 # Save the previous segment
@@ -93,29 +93,22 @@ def create_segments(transcripts, boundaries, update_progress, update_progress_me
                     'latest_end_time': latest_end_time,
                     'start_index': start_index,
                     'end_index': i - 1,
-                    'video_id': video_id,
+                    'video_id': video_id,  # This might need to be set differently
                     'index': len(segments),
-                    'transcript': "\n".join(current_segment_transcripts)
+                    'transcript': " ".join(current_segment_transcripts)
                 }
                 segments.append(segment)
                 current_segment_transcripts = []
 
             # Reset for new segment
             start_index = i
-            earliest_start_time = transcript['earliest_start_time']
-            latest_end_time = transcript['latest_end_time']
-            video_id = transcript['video_id']
+            earliest_start_time = transcript['start_time']
+            latest_end_time = transcript['end_time']
             current_segment_transcripts.append(transcript['transcript'])
         else:
             # Continue with the current segment
-            latest_end_time = max(latest_end_time, transcript['latest_end_time'])
+            latest_end_time = max(latest_end_time, transcript['end_time'])
             current_segment_transcripts.append(transcript['transcript'])
-
-        # Update times across segments
-        if earliest_start_time is None or transcript['earliest_start_time'] < earliest_start_time:
-            earliest_start_time = transcript['earliest_start_time']
-        if latest_end_time is None or transcript['latest_end_time'] > latest_end_time:
-            latest_end_time = transcript['latest_end_time']
 
     # Add the last segment if there are remaining transcripts
     if current_segment_transcripts:
@@ -123,10 +116,10 @@ def create_segments(transcripts, boundaries, update_progress, update_progress_me
             'earliest_start_time': earliest_start_time,
             'latest_end_time': latest_end_time,
             'start_index': start_index,
-            'end_index': len(transcripts) - 1,
+            'end_index': len(fixed_length_transcripts) - 1,
             'video_id': video_id,
             'index': len(segments),
-            'transcript': "\n".join(current_segment_transcripts)
+            'transcript': " ".join(current_segment_transcripts)
         }
         segments.append(segment)
 

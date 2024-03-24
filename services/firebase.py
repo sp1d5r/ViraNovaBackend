@@ -139,6 +139,36 @@ class FirebaseService:
 
         return [transcript.to_dict() for transcript in transcripts]
 
+    def query_transcripts_by_video_id_with_words(self, video_id):
+        # Query transcripts by video_id and sort by index
+        transcripts = self.db.collection("transcriptions") \
+            .where("video_id", "==", video_id) \
+            .order_by("index") \
+            .get()
+
+        # Initialize a list to hold all transcripts with their words
+        transcripts_with_words = []
+
+        # Iterate over each transcript document
+        for transcript in transcripts:
+            # Convert the transcript document to a dictionary
+            transcript_dict = transcript.to_dict()
+
+            # Fetch words for the current transcript from the "word" sub-collection
+            words = self.db.collection("transcriptions") \
+                .document(transcript.id) \
+                .collection("words") \
+                .order_by("index") \
+                .get()
+
+            # Add the words to the transcript dictionary
+            transcript_dict["words"] = [word.to_dict() for word in words]
+
+            # Append the enriched transcript to the list
+            transcripts_with_words.append(transcript_dict)
+
+        return transcripts_with_words
+
     def query_topical_segments_by_video_id(self, video_id):
         # New method to query transcripts by video_id and sort by index
         segments = self.db.collection("topical_segments") \
