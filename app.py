@@ -132,7 +132,7 @@ def create_fixed_length_transcripts(transcripts_with_words, n=100):
     return fixed_length_transcripts
 
 
-@app.route("/deal-with-topical-segments/<video_id>")
+@app.route("/extract-topical-segments/<video_id>")
 def deal_with_topical_segments(video_id: str):
     print("Here")
     firebase_service = FirebaseService()
@@ -162,7 +162,7 @@ def deal_with_topical_segments(video_id: str):
     else:
         return error_message, 404
 
-@app.route("/extract-topical-segments/<video_id>")
+@app.route("/v0/extract-topical-segments/<video_id>")
 def extract_topical_segments(video_id: str):
     # Access video document and verify existance
     firebase_service = FirebaseService()
