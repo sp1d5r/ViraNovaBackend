@@ -18,12 +18,13 @@ origins = [
     "http://localhost:3000/segmentation",
     "https://master.d2gor5eji1mb54.amplifyapp.com",
     "http://localhost:5000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
     "http://127.0.0.1:5000"
 ]
 
 
 VIDEO_FOLDER = '/viranova_storage/'
-
 
 CORS(app, resources={r"/*": {"origins": origins}})
 
@@ -149,9 +150,7 @@ def deal_with_topical_segments(video_id: str):
         embeddings = open_ai_service.get_embeddings(custom_transcript, update_progress)
         boundaries = get_transcript_topic_boundaries(embeddings, update_progress, update_progress_message)
         print(boundaries)
-
         segments = create_segments(custom_transcript, boundaries, video_id, update_progress, update_progress_message)
-
         update_progress_message("Uploading segments to database")
         for index, segment in enumerate(segments):
             update_progress((index + 1) / len(segments) * 100)

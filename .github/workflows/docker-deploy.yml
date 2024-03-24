@@ -25,3 +25,8 @@ jobs:
         context: .
         push: true
         tags: registry.digitalocean.com/viranova-container/viranovabackend:latest
+        build-args: |
+          SERVICE_ACCOUNT_ENCODED=${{ secrets.SERVICE_ACCOUNT_ENCODED }}
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }}
+          

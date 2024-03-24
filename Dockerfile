@@ -18,6 +18,13 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Get environment vars
+ARG SERVICE_ACCOUNT_ENCODED
+ENV SERVICE_ACCOUNT_ENCODED=${SERVICE_ACCOUNT_ENCODED}
+ARG OPENAI_API_KEY
+ENV OPENAI_API_KEY=${OPENAI_API_KEY}
+ARG FIREBASE_STORAGE_BUCKET
+ENV FIREBASE_STORAGE_BUCKET=${FIREBASE_STORAGE_BUCKET}
 
 # Make port 5000 available to the world outside this container
 EXPOSE 5000
