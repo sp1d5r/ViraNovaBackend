@@ -29,4 +29,10 @@ jobs:
           SERVICE_ACCOUNT_ENCODED=${{ secrets.SERVICE_ACCOUNT_ENCODED }}
           OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
           FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }}
-          
+          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_HOST=${{ secrets.POSTGRES_HOST }}
+          POSTGRES_PORT=${{ secrets.POSTGRES_PORT }}
+          POSTGRES_DATABASE=${{ secrets.POSTGRES_DATABASE }}
+          POSTGRES_SSLMODE=${{ secrets.POSTGRES_SSLMODE }}
+          QDRANT_LOCATION=${{ secrets.QDRANT_LOCATION }}
