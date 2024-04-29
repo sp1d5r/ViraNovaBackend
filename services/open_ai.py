@@ -8,43 +8,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def get_segment_embeddings(video_id, segmented_df, step=7, step_size=7):
-    embeddings_recorded = []
-
-    filtered_to_example = segmented_df[segmented_df['video_id'] == video_id]
-    # Loop through the DataFrame with the current step
-    for start in range(0, len(filtered_to_example), step):
-        end = start + step_size
-        # Make sure the end does not go beyond the DataFrame's length
-        end = min(end, len(filtered_to_example))
-        # Get the chunk of text from the DataFrame
-        df_chunk = filtered_to_example.iloc[start:end]
-        chunk_transcript = " ".join(df_chunk['text'])
-
-        # Simulate getting the embeddings for the chunk (replace with actual API calls)
-        response = client.embeddings.create(
-            input=chunk_transcript,
-            model="text-embedding-3-small"
-        )
-        embedding_response = response.json()
-        embedding_json = json.loads(embedding_response)
-        text_embedding = embedding_json['data'][0]['embedding']
-
-        # Store the embeddings
-        embeddings_recorded.extend([embedding_response] * step)
-
-    # Truncate the embeddings list to match the DataFrame length if it's longer
-    embeddings_recorded = embeddings_recorded[:len(filtered_to_example)]
-
-    # Create a new column name based on the step and step_size
-    column_name = 'gpt_embedding'
-
-    # Add the embeddings list as a new column to the DataFrame
-    filtered_to_example[column_name] = embeddings_recorded
-    return filtered_to_example
-
-
-
 class OpenAIService():
     def __init__(self):
         self.key = os.getenv("OPENAI_API_KEY")  # Replace this with the users API key
