@@ -13,6 +13,13 @@ import os
 import random
 from flask_cors import CORS
 
+TOTAL_AVAILABLE_TOKENS = 8000  # Lower Bound
+TOKEN_SIZE = 3
+AVERAGE_ENGLISH_WORD_LENGTH = 8
+FIXED_SEGMENT_LENGTH = 43
+AVERAGE_CHAR_SEGMENT = FIXED_SEGMENT_LENGTH * AVERAGE_ENGLISH_WORD_LENGTH
+SEGMENTS_TO_SEND_IN_PARALLEL = int((TOTAL_AVAILABLE_TOKENS * TOKEN_SIZE) / AVERAGE_CHAR_SEGMENT)
+
 
 app = Flask(__name__)
 
@@ -181,14 +188,41 @@ def extract_topical_segments(video_id: str):
     if is_valid_document:
         update_progress(0)
         update_progress_message("Determining the video topics...")
-        transcripts = firebase_service.query_transcripts_by_video_id(video_id)
-        print(transcripts)
-        update_progress_message("Getting text embeddings... This might take a while...")
-        embeddings = open_ai_service.get_embeddings(transcripts, update_progress)
+        transcripts = firebase_service.query_transcripts_by_video_id_with_words(video_id)
+        update_progress_message("Extracting Transcript Words")
+        words = []
 
+        for transcript_seg in transcripts:
+            words.extend(transcript_seg['words'])
+
+        num_transcripts = len(words) // FIXED_SEGMENT_LENGTH + (1 if len(words) % FIXED_SEGMENT_LENGTH != 0 else 0)
+        segmented_transcripts = []
+
+        for i in range(num_transcripts):
+            start_index = i * FIXED_SEGMENT_LENGTH
+            end_index = min((i + 1) * FIXED_SEGMENT_LENGTH, len(words))
+            words_segment = words[start_index:end_index]
+            segmented_transcripts.append(words_segment)
+
+
+        fixed_length_segments = [
+            {
+                'start_time': min([j['start_time'] for j in i if j['start_time'] is not None]),
+                'end_time': max([j['end_time'] for j in i if j['end_time'] is not None]),
+                'start_index': min([j['index'] for j in i if j['index'] is not None]),
+                'end_index': max([j['index'] for j in i if j['index'] is not None]),
+                'transcript': ' '.join([j['word'] for j in i if j])
+            }
+            for i in segmented_transcripts
+        ]
+
+        update_progress_message("Getting text embeddings... This might take a while...")
+
+        embeddings = open_ai_service.get_embeddings_parallel([i['transcript'] for i in fixed_length_segments], SEGMENTS_TO_SEND_IN_PARALLEL, update_progress=update_progress)
+
+        update_progress_message("Finding topic changes")
         boundaries = get_transcript_topic_boundaries(embeddings, update_progress, update_progress_message)
-        # print(boundaries) = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
-        segments = create_segments(transcripts, boundaries, update_progress, update_progress_message)
+        segments = create_segments(fixed_length_segments, boundaries, video_id, update_progress, update_progress_message)
 
         update_progress_message("Uploading segments to database")
         for index, segment in enumerate(segments):
@@ -196,7 +230,7 @@ def extract_topical_segments(video_id: str):
             firebase_service.add_document("topical_segments", segment)
 
         update_progress_message("Finished Segmenting Video!")
-        firebase_service.update_document('videos', video_id, {'status': "Summarizing Segments"})
+        # firebase_service.update_document('videos', video_id, {'status': "Summarizing Segments"})
         return segments, 200
     else:
         return error_message, 404
