@@ -230,7 +230,7 @@ def extract_topical_segments(video_id: str):
             firebase_service.add_document("topical_segments", segment)
 
         update_progress_message("Finished Segmenting Video!")
-        # firebase_service.update_document('videos', video_id, {'status': "Summarizing Segments"})
+        firebase_service.update_document('videos', video_id, {'status': "Summarizing Segments"})
         return segments, 200
     else:
         return error_message, 404
