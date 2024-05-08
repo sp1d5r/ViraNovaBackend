@@ -16,6 +16,9 @@ def generate_short_ideas_from_segments(video_id: str):
         topical_segments = firebase_service.query_topical_segments_by_video_id(video_id)
         for segment in topical_segments:
             try:
+                if segment['flagged']:
+                    continue
+
                 tiktok_idea = idea_generator_chain.invoke({'transcript': segment['transcript']})
                 if tiktok_idea.tiktok_idea == '':
                     continue
