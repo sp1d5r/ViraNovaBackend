@@ -1,7 +1,7 @@
 import base64
 
 # Replace 'path/to/your/service-account-file.json' with the path to your JSON file
-file_path = './viranova-firebase-service-account.json'
+file_path = '../viranova-firebase-service-account.json'
 
 with open(file_path, 'r') as json_file:
     json_str = json_file.read()
