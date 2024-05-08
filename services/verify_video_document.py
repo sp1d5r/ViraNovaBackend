@@ -1,4 +1,3 @@
-
 def parse_and_verify_video(video_document: dict) -> (bool, str):
     if not video_document:
         return False, "Document Not found"
