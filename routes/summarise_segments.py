@@ -36,7 +36,8 @@ def summarise_segments_for_transcript(video_id):
             firebase_service.update_document("topical_segments", segment["id"],
                                              {
                                                 'segment_summary': segment_summary,
-                                                 'segment_title': segment_title,
+                                                'segment_title': segment_title,
+                                                'segment_status': "Segment Summarised",
                                                 'flagged': content_moderation['flagged'],
                                                 "harassment": content_moderation["harassment"],
                                                 "harassment_threatening": content_moderation["harassment_threatening"],
@@ -49,7 +50,7 @@ def summarise_segments_for_transcript(video_id):
                                               })
 
         update_progress_message("Segments Summarised!")
-        firebase_service.update_document("videos", video_id, {'status': 'Preprocessing Complete'})
+        firebase_service.update_document("videos", video_id, {'status': 'Create TikTok Ideas'})
         return segments, 200
     else:
         return error_message, 404

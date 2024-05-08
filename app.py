@@ -1,4 +1,5 @@
 from flask import Flask
+from routes.generate_short_ideas import generate_short_ideas
 from routes.get_random_video import get_random_video
 from routes.get_segmentation_masks import get_segmentation_mask
 from routes.get_shorts_and_segments import get_shorts_and_segments
@@ -32,6 +33,7 @@ app.register_blueprint(summarise_segments)
 app.register_blueprint(get_random_video)
 app.register_blueprint(get_segmentation_mask)
 app.register_blueprint(get_shorts_and_segments)
+app.register_blueprint(generate_short_ideas)
 
 
 @app.route("/")

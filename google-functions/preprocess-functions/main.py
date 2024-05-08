@@ -76,6 +76,7 @@ def preprocess_video_documents(event, context):
             "Transcribing": "transcribe-and-diarize",
             "Segmenting": "extract-topical-segments",
             "Summarizing Segments": "summarise-segments",
+            "Create TikTok Ideas": "generate-short-ideas"
         }
 
         if new_status in status_route_mapping:

@@ -59,7 +59,7 @@ marshmallow==3.21.2
 msgpack==1.0.7
 multidict==6.0.5
 mypy-extensions==1.0.0
-numpy==1.21.6
+numpy==1.23.2
 openai==1.26.0
 orjson==3.10.3
 packaging==23.2
