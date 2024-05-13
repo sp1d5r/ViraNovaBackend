@@ -74,7 +74,7 @@ def preprocess_video_documents(event, context):
         status_route_mapping = {
             "Uploaded": "split-video",
             "Transcribing": "transcribe-and-diarize",
-            "Segmenting": "extract-topical-segments",
+            "Segmenting": "v0/extract-topical-segments",
             "Summarizing Segments": "summarise-segments",
             "Create TikTok Ideas": "generate-short-ideas"
         }

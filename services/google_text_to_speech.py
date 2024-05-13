@@ -91,6 +91,8 @@ class GoogleSpeechService:
                 encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
                 sample_rate_hertz=16000,
                 language_code=language,
+                enable_word_time_offsets=True,
+                enable_word_confidence=True,
             )
 
         try:
@@ -110,7 +112,7 @@ class GoogleSpeechService:
 
             while not operation.done():
                 check_operation_progress(operation)
-                time.sleep(5)  # Adjust sleep time as appropriate
+                time.sleep(1)  # Adjust sleep time as appropriate
 
             response = operation.result()
             # Once done, you can handle the final result within the callback or after the loop if synchronous handling
@@ -119,15 +121,6 @@ class GoogleSpeechService:
         except Exception as e:
             update_progress_message("Failed to conduct speech recognition: " + str(e))
             return
-
-        # For diarization results: response.results[-1].alternatives[0].words
-        for index, result in enumerate(response.results):
-            update_progress((index + 1) / len(response.results) * 100)
-            print("Transcript: {}".format(result.alternatives[0].transcript))
-            if enable_diarization:
-                # Show speaker tags if diarization is enabled
-                for word_info in result.alternatives[0].words:
-                    print(f"Speaker {word_info.speaker_tag}: '{word_info.word}'")
 
         return response
 

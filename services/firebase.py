@@ -72,14 +72,12 @@ class FirebaseService:
         transcriptions_collection = self.db.collection('transcriptions')
         transcripts_list = []
         words_list = []
+        earliest_start_time = None
+        latest_end_time = None
 
         for index, result in enumerate(transcribed_content.results):
             update_progress(index / (len(transcribed_content.results) - 1) * 100)
             primary_alternative = result.alternatives[0]
-
-            # Initialize with 'None' to identify if start or end times have not been set
-            earliest_start_time = None
-            latest_end_time = None
 
             words_data = []  # To temporarily store word data and calculate times
 
@@ -183,3 +181,27 @@ class FirebaseService:
             segments_with_ids.append(segment_dict)
 
         return segments_with_ids
+
+    def query_documents(self, collection, field, value):
+        # New method to query transcripts by video_id and sort by index
+        query_res = self.db.collection(collection) \
+            .where(field, "==", value) \
+            .get()
+
+        response = []
+        for query in query_res:
+            qeury_dict = query.to_dict()
+            qeury_dict['id'] = query.id
+            response.append(qeury_dict)
+
+        return response
+
+    def delete_document(self, collection_name, document_id):
+        """Deletes a specific document from a collection."""
+        doc_ref = self.db.collection(collection_name).document(document_id)
+        doc = doc_ref.get()
+        if doc.exists:
+            doc_ref.delete()
+            return f"Document {document_id} in {collection_name} deleted successfully."
+        else:
+            return f"Document {document_id} in {collection_name} does not exist."

@@ -22,7 +22,7 @@ def transcribe_and_diarize(video_id: str):
         update_progress(0)
         update_progress_message("Beginning Transcribing.")
 
-        diarized = True
+        diarized = False
         transcribed_content = tts_service.transcribe_gcs(
             audio_path,
             update_progress,

@@ -121,7 +121,7 @@ def get_transcript_topic_boundaries(embeddings, update_progress, update_progress
 def create_segments(fixed_length_transcripts, boundaries, video_id, update_progress, update_progress_message):
     segments = []
     current_segment_transcripts = []
-    start_index = 0
+    current_words = []
     earliest_start_time = None
     latest_end_time = None
 
@@ -137,37 +137,41 @@ def create_segments(fixed_length_transcripts, boundaries, video_id, update_progr
                 segment = {
                     'earliest_start_time': earliest_start_time,
                     'latest_end_time': latest_end_time,
-                    'start_index': start_index,
-                    'end_index': i - 1,
+                    'start_index': min([i['index'] for i in current_words]),
+                    'end_index': max([i['index'] for i in current_words]),
                     'video_id': video_id,  # This might need to be set differently
                     'index': len(segments),
                     'segment_status': "Topical Segment Created",
-                    'transcript': " ".join(current_segment_transcripts)
+                    'transcript': " ".join(current_segment_transcripts),
+                    'words': str(current_words)
                 }
                 segments.append(segment)
                 current_segment_transcripts = []
+                current_words = []
 
             # Reset for new segment
-            start_index = i
             earliest_start_time = transcript['start_time']
             latest_end_time = transcript['end_time']
             current_segment_transcripts.append(transcript['transcript'])
+            current_words.extend(transcript['words'])
         else:
             # Continue with the current segment
             latest_end_time = max(latest_end_time, transcript['end_time'])
             current_segment_transcripts.append(transcript['transcript'])
+            current_words.extend(transcript['words'])
 
     # Add the last segment if there are remaining transcripts
     if current_segment_transcripts:
         segment = {
             'earliest_start_time': earliest_start_time,
             'latest_end_time': latest_end_time,
-            'start_index': start_index,
-            'end_index': len(fixed_length_transcripts) - 1,
+            'start_index': min([i['index'] for i in current_words]),
+            'end_index': max([i['index'] for i in current_words]),
             'video_id': video_id,
             'index': len(segments),
             'segment_status': "Topical Segment Created",
-            'transcript': " ".join(current_segment_transcripts)
+            'transcript': " ".join(current_segment_transcripts),
+            'words': str(current_words)
         }
         segments.append(segment)
 
@@ -208,6 +212,26 @@ def deal_with_topical_segments(video_id: str):
         return error_message, 404
 
 
+def reformat_transcripts(transcripts):
+    # Sort the transcripts based on the 'index' key
+    sorted_transcripts = sorted(transcripts, key=lambda x: x['index'])
+    # Initialize a new list to hold all the words with updated indices
+    all_words = []
+    current_word_index = 0  # This will keep track of the overall index of words across all transcripts
+    # Iterate over each transcript in the sorted order
+    for transcript in sorted_transcripts:
+        words = transcript['words']
+        updated_words = []  # This will store updated words for the current transcript
+        # Iterate over each word in the current transcript
+        for word in words:
+            updated_word = word.copy()  # Copy the original word dictionary
+            updated_word['index'] = current_word_index  # Assign the new index
+            updated_words.append(updated_word)  # Add the updated word to the list
+            current_word_index += 1  # Increment the global word index
+        # Replace the old words list in the transcript with the updated one
+        transcript['words'] = updated_words
+    return sorted_transcripts  # Return the modified list of transcripts
+
 @topical_segmentation.route("/v0/extract-topical-segments/<video_id>")
 def extract_topical_segments(video_id: str):
     # Access video document and verify existance
@@ -222,8 +246,17 @@ def extract_topical_segments(video_id: str):
 
     if is_valid_document:
         update_progress(0)
+
+        # Delete Previous Topical Segments if they exist.
+        previous_topical_segments = firebase_service.query_topical_segments_by_video_id(video_id)
+        print("Previous_topical segments", previous_topical_segments)
+        if previous_topical_segments and len(previous_topical_segments) > 0:
+            for topical_seg in previous_topical_segments:
+                firebase_service.delete_document('topical_segments', topical_seg['id'])
+
         update_progress_message("Determining the video topics...")
         transcripts = firebase_service.query_transcripts_by_video_id_with_words(video_id)
+        transcripts = reformat_transcripts(transcripts)
         update_progress_message("Extracting Transcript Words")
         words = []
 
@@ -246,13 +279,13 @@ def extract_topical_segments(video_id: str):
                 'end_time': max([j['end_time'] for j in i if j['end_time'] is not None]),
                 'start_index': min([j['index'] for j in i if j['index'] is not None]),
                 'end_index': max([j['index'] for j in i if j['index'] is not None]),
-                'transcript': ' '.join([j['word'] for j in i if j])
+                'transcript': ' '.join([j['word'] for j in i if j]),
+                'words': i,
             }
             for i in segmented_transcripts
         ]
 
         update_progress_message("Getting text embeddings... This might take a while...")
-
         embeddings = open_ai_service.get_embeddings_parallel([i['transcript'] for i in fixed_length_segments], SEGMENTS_TO_SEND_IN_PARALLEL, update_progress=update_progress)
 
         update_progress_message("Finding topic changes")
