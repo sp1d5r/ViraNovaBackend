@@ -190,6 +190,7 @@ def generate_test_audio(short_id):
     short_document = firebase_service.get_document("shorts", short_id)
     is_valid_document, error_message = parse_and_verify_short(short_document)
     if is_valid_document:
+        firebase_service.update_document('shorts', short_id, {'temp_audio_file': "Loading..."})
         print("Collected Document")
         logs = short_document['logs']
 
