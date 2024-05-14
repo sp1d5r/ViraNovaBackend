@@ -1,3 +1,5 @@
+import tempfile
+
 import firebase_admin
 from firebase_admin import credentials
 from firebase_admin import firestore
@@ -55,6 +57,25 @@ class FirebaseService:
         blob.download_to_file(in_memory_file)
         in_memory_file.seek(0)  # Move to the beginning of the BytesIO buffer
         return in_memory_file
+
+    def download_file_to_temp(self, blob_name):
+        """Downloads a file from Firebase Storage to a temporary file and returns the file path."""
+        blob = self.bucket.blob(blob_name)
+        _, temp_local_path = tempfile.mkstemp()
+        blob.download_to_filename(temp_local_path)
+        return temp_local_path
+
+    def upload_file_from_temp(self, file_path, destination_blob_name):
+        """Uploads a file from a temporary file to Firebase Storage."""
+        blob = self.bucket.blob(destination_blob_name)
+        blob.upload_from_filename(file_path)
+        os.remove(file_path)
+
+    def upload_file_from_memory(self, in_memory_file, destination_blob_name):
+        """Uploads a file from memory to Firebase Storage."""
+        blob = self.bucket.blob(destination_blob_name)
+        in_memory_file.seek(0)  # Move to the beginning of the BytesIO buffer
+        blob.upload_from_file(in_memory_file)
 
     def update_document(self, collection_name, document_id, update_fields):
         """Updates specific fields of a document."""
