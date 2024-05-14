@@ -2,6 +2,7 @@ import subprocess
 import tempfile
 import shutil
 import os
+from moviepy.editor import VideoFileClip, concatenate_videoclips
 
 
 class VideoClipper:
@@ -68,35 +69,19 @@ class VideoClipper:
             os.remove(temp_path)
 
     def delete_segments_from_video(self, input_video_path, segments_to_keep, output_video_path):
-        filter_complex = []
-        inputs = []
-        for i, (start, end) in enumerate(segments_to_keep):
-            # Format start and end times for FFmpeg
-            start_formatted = self.format_time(start)
-            end_formatted = self.format_time(end)
+        # Load the source video
+        video = VideoFileClip(input_video_path)
 
-            # Create filters to extract segments
-            filter_complex.append(f"[0:v]trim=start={start_formatted}:end={end_formatted},setpts=PTS-STARTPTS[v{i}];")
-            filter_complex.append(f"[0:a]atrim=start={start_formatted}:end={end_formatted},asetpts=PTS-STARTPTS[a{i}];")
-            inputs.append(f"[v{i}][a{i}]")
+        # List to store the clips to concatenate
+        clips = []
 
-        # Concatenate the video segments
-        concat_str = 'concat:' + '|'.join(f'n={len(segments_to_keep)}:v=1:a=1[vout][aout]')
-        filter_complex.append(f"{concat_str}")
+        # Extract clips to keep from the video
+        for start, end in segments_to_keep:
+            clips.append(video.subclip(start, end))
 
-        # Build the complete FFmpeg command
-        ffmpeg_command = [
-            'ffmpeg',
-            '-y',  # Overwrite output files without asking
-            '-i', input_video_path,
-            '-filter_complex', ''.join(filter_complex),
-            '-map', '[vout]',
-            '-map', '[aout]',
-            '-c:v', 'libx264',
-            '-crf', '23',
-            '-preset', 'fast',
-            output_video_path
-        ]
+        # Concatenate the clips
+        final_clip = concatenate_videoclips(clips)
 
-        # Execute the command
-        subprocess.run(ffmpeg_command, check=True)
+        # Write the result to the output file
+        final_clip.write_videofile(output_video_path, codec="libx264", fps=24, preset="fast")
+

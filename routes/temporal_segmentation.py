@@ -2,6 +2,7 @@ import ast
 from flask import Blueprint
 from services.firebase import FirebaseService
 from services.langchain_chains.crop_segment import requires_cropping_chain, delete_operation_chain
+from services.saliency_detection.segmentation_saliency_detector import SegmentedSaliencyDetector
 from services.verify_video_document import parse_and_verify_short, parse_and_verify_video, parse_and_verify_segment
 from datetime import datetime
 from pydub import AudioSegment
@@ -298,6 +299,24 @@ def crop_video_to_segment(segment_id):
     os.remove(input_path)
     os.remove(output_path)
 
+def merge_consecutive_cuts(cuts):
+    if not cuts:
+        return []
+
+    # Start with the first cut
+    merged_cuts = [cuts[0]]
+
+    for current_start, current_end in cuts[1:]:
+        last_start, last_end = merged_cuts[-1]
+
+        # If the current start time is the same as the last end time, merge them
+        if current_start == last_end:
+            merged_cuts[-1] = (last_start, current_end)  # Extend the last segment
+        else:
+            merged_cuts.append((current_start, current_end))
+
+    return merged_cuts
+
 
 @temporal_segmentation.route("/create-short-video/<short_id>")
 def create_short_video(short_id):
@@ -315,11 +334,13 @@ def create_short_video(short_id):
 
     print("Loading Operations")
     segment_document_words = ast.literal_eval(segment_document['words'])
+    start_time = segment_document_words[0]['start_time']
     print("Read Segment Words")
     words_to_handle = handle_operations_from_logs(logs, segment_document_words)
     print("Get clips start and end")
 
-    keep_cuts = [(i['start_time'], i['end_time']) for i in words_to_handle]
+    keep_cuts = [(round(i['start_time'] - start_time, 3), round(i['end_time'] - start_time,3)) for i in words_to_handle]
+    merge_cuts = merge_consecutive_cuts(keep_cuts)
 
     print("Loading segment video to temporary location")
     video_path = segment_document['video_segment_location']
@@ -329,7 +350,7 @@ def create_short_video(short_id):
     # 3) Clip the short according to locations
     print("Creating temporary video segment")
     _, output_path = tempfile.mkstemp(suffix='.mp4')  # Ensure it's an mp4 file
-    video_clipper.delete_segments_from_video(input_path, keep_cuts, output_path)
+    video_clipper.delete_segments_from_video(input_path, merge_cuts, output_path)
     print_file_size(output_path)
 
     print("Uploading clipped video to short location")
@@ -337,8 +358,34 @@ def create_short_video(short_id):
     firebase_service.upload_file_from_temp(output_path, destination_blob_name)
 
     print("Updating short document")
-    firebase_service.update_document("shorts", short_id, {"short_clipped_video": output_path})
+    firebase_service.update_document("shorts", short_id, {"short_clipped_video": destination_blob_name})
 
     print("Clean up...")
     os.remove(input_path)
-    os.remove(output_path)
+
+@temporal_segmentation.route("/get_saliency_for_short/<short_id>")
+def get_saliency_for_short(short_id):
+    firebase_service = FirebaseService()
+    saliency_service = SegmentedSaliencyDetector()
+
+    print("Getting Documents")
+    short_document = firebase_service.get_document("shorts", short_id)
+
+    short_video_path = short_document['short_clipped_video']
+
+    if short_video_path is None:
+        return 404, "No short video path found"
+
+    print("Loading video into temp locations")
+    temp_location = firebase_service.download_file_to_temp(short_video_path)
+    _, output_path = tempfile.mkstemp(suffix='.mp4')
+
+    print("Calculating the saliency")
+    saliency_service.generate_video_saliency(temp_location, skip_frames=5, save_path=output_path)
+
+    print("Uploading to firebase")
+    destination_blob_name = "short-video-saliency/" + short_id + "-" + "".join(short_video_path.split("/")[1:])
+    firebase_service.upload_file_from_temp(output_path, destination_blob_name)
+
+    print("Updating short document")
+    firebase_service.update_document("shorts", short_id, {"short_video_saliency": destination_blob_name})

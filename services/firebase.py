@@ -58,10 +58,10 @@ class FirebaseService:
         in_memory_file.seek(0)  # Move to the beginning of the BytesIO buffer
         return in_memory_file
 
-    def download_file_to_temp(self, blob_name):
+    def download_file_to_temp(self, blob_name, suffix=".mp4"):
         """Downloads a file from Firebase Storage to a temporary file and returns the file path."""
         blob = self.bucket.blob(blob_name)
-        _, temp_local_path = tempfile.mkstemp()
+        _, temp_local_path = tempfile.mkstemp(suffix=suffix)
         blob.download_to_filename(temp_local_path)
         return temp_local_path
 
