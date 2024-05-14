@@ -254,14 +254,14 @@ def generate_test_audio(short_id):
         return 404, error_message
 
 
+def print_file_size(file_path):
+    size = os.path.getsize(file_path)
+    print(f"File size of {file_path} is {size} bytes.")
+
 @temporal_segmentation.route("/crop-segment/<segment_id>")
 def crop_video_to_segment(segment_id):
     firebase_service = FirebaseService()
     video_clipper = VideoClipper()
-
-    def print_file_size(file_path):
-        size = os.path.getsize(file_path)
-        print(f"File size of {file_path} is {size} bytes.")
 
     print("Getting Documents")
     segment_document = firebase_service.get_document("topical_segments", segment_id)
@@ -292,8 +292,53 @@ def crop_video_to_segment(segment_id):
     firebase_service.upload_file_from_temp(output_path, destination_blob_name)
 
     # 4) Update location on short document
-    firebase_service.update_document("topical_segments", segment_id, {"video-segment-location": output_path})
+    firebase_service.update_document("topical_segments", segment_id, {"video_segment_location": output_path})
 
     # 5) Cleanup
+    os.remove(input_path)
+    os.remove(output_path)
+
+
+@temporal_segmentation.route("/create-short-video/<short_id>")
+def create_short_video(short_id):
+    firebase_service = FirebaseService()
+    video_clipper = VideoClipper()
+
+    print("Getting Documents")
+    short_document = firebase_service.get_document("shorts", short_id)
+    segment_id = short_document['segment_id']
+    segment_document = firebase_service.get_document("topical_segments", segment_id)
+
+    print("Getting logs")
+    # Check if the segment has a video segment location
+    logs = short_document['logs']
+
+    print("Loading Operations")
+    segment_document_words = ast.literal_eval(segment_document['words'])
+    print("Read Segment Words")
+    words_to_handle = handle_operations_from_logs(logs, segment_document_words)
+    print("Get clips start and end")
+
+    keep_cuts = [(i['start_time'], i['end_time']) for i in words_to_handle]
+
+    print("Loading segment video to temporary location")
+    video_path = segment_document['video_segment_location']
+    input_path = firebase_service.download_file_to_temp(video_path)
+    print_file_size(input_path)
+
+    # 3) Clip the short according to locations
+    print("Creating temporary video segment")
+    _, output_path = tempfile.mkstemp(suffix='.mp4')  # Ensure it's an mp4 file
+    video_clipper.delete_segments_from_video(input_path, keep_cuts, output_path)
+    print_file_size(output_path)
+
+    print("Uploading clipped video to short location")
+    destination_blob_name = "short-video/" + short_id + "-" + "".join(video_path.split("/")[1:])
+    firebase_service.upload_file_from_temp(output_path, destination_blob_name)
+
+    print("Updating short document")
+    firebase_service.update_document("shorts", short_id, {"short_clipped_video": output_path})
+
+    print("Clean up...")
     os.remove(input_path)
     os.remove(output_path)
