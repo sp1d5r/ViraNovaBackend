@@ -265,7 +265,7 @@ def crop_video_to_segment(segment_id):
 
     print("Getting Documents")
     segment_document = firebase_service.get_document("topical_segments", segment_id)
-    video_document = firebase_service.get_document('videos', segment_id['video_id'])
+    video_document = firebase_service.get_document('videos', segment_document['video_id'])
 
     firebase_service.update_document("topical_segments", segment_id, {'segment_status': "Getting Segment Video"})
 
