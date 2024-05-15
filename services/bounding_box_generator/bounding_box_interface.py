@@ -3,12 +3,12 @@ from abc import ABC, abstractmethod
 
 class BoundingBoxGenerator(ABC):
     @abstractmethod
-    def generate_bounding_boxes(self, saliency_video_path):
+    def generate_bounding_boxes(self, saliency_video_path, start_frame, end_frame):
         """Generate bounding boxes from a video saliency map located at a specified path."""
         pass
 
     @abstractmethod
-    def evaluate_saliency(self, saliency_video_path, bounding_boxes):
+    def evaluate_saliency(self, saliency_video_path, bounding_boxes, start_frame, end_frame):
         """Evaluate the effectiveness of saliency within the bounding boxes across video frames."""
         pass
 

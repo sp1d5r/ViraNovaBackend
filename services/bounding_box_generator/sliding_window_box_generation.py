@@ -63,44 +63,44 @@ class SlidingWindowBoundingBoxGenerator(BoundingBoxGenerator):
         # Return the x-position with maximum saliency and other bounding box parameters
         return max_x, 0, bb_width, bb_height
 
-    def generate_bounding_boxes(self, saliency_video_path):
-        # Read the video saliency map
+    def generate_bounding_boxes(self, saliency_video_path, start_frame, end_frame):
         saliency_video = cv2.VideoCapture(saliency_video_path)
         if not saliency_video.isOpened():
             print("Error: Unable to open saliency video file.")
             return []
 
+        saliency_video.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
         bb_height, bb_width = None, None
-
-        # Initialize list to store bounding boxes
         bounding_boxes = []
 
-        # Iterate over video frames to generate bounding boxes
-        while True:
-            # Read a frame from the saliency video
+        frame_count = start_frame
+        while frame_count <= end_frame:
             success, frame = saliency_video.read()
-
             if not success:
+
                 break
 
             if bb_width is None or bb_height is None:
                 bb_height, bb_width = frame.shape[0], int((frame.shape[0] / 16) * 9)
 
-                # Find x-position with maximum saliency for each frame
             bb_x, bb_y, bb_width, bb_height = self._find_x_pos_max(bb_height, bb_width, frame)
-
-            # Append bounding box to the list
             bounding_boxes.append((bb_x, bb_y, bb_width, bb_height))
+            frame_count += 1
 
-        # Release the video capture object
         saliency_video.release()
         return bounding_boxes
 
-    def evaluate_saliency(self, saliency_video_path, bounding_boxes):
+    def evaluate_saliency(self, saliency_video_path, bounding_boxes, start_frame, end_frame):
         cap = cv2.VideoCapture(saliency_video_path)
+        if not cap.isOpened():
+            print("Error: Unable to open video file.")
+            return []
+
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
         evaluation_results = []
         frame_index = 0
-        while True:
+
+        while frame_index < len(bounding_boxes) and (start_frame + frame_index) <= end_frame:
             ret, frame = cap.read()
             if not ret:
                 break
@@ -109,9 +109,9 @@ class SlidingWindowBoundingBoxGenerator(BoundingBoxGenerator):
             x, y, w, h = bounding_boxes[frame_index]
             total_saliency = np.sum(saliency_frame)
             frame_saliency_sum = np.sum(saliency_frame[y:y + h, x:x + w])
-            evaluation_results.append(frame_saliency_sum / total_saliency)
-
+            evaluation_results.append(frame_saliency_sum / total_saliency if total_saliency != 0 else 0)
             frame_index += 1
+
         cap.release()
         return evaluation_results
 
