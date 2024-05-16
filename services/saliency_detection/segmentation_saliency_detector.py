@@ -50,13 +50,20 @@ class SegmentedSaliencyDetector(VideoSaliencyDetector):
         """Save the saliency map to an output."""
         output_writer.write(saliency_map)
 
-    def generate_video_saliency(self, video_path, skip_frames=5, save_path='saliency_video.avi', type="max"):
+    def generate_video_saliency(self, video_path, skip_frames=5, save_path='saliency_video.mp4', type="max"):
         """Generate a saliency map for an entire video with segmentation included."""
         cap = cv2.VideoCapture(video_path)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))  # Get the total number of frames in the video
         frame_width = int(cap.get(3))
         frame_height = int(cap.get(4))
-        out = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc('M','J','P','G'), 10, (frame_width, frame_height), isColor=False)
+
+        # Calculate the frame rate based on the skip frames method
+        original_frame_rate = cap.get(cv2.CAP_PROP_FPS)
+        effective_frame_rate = original_frame_rate / skip_frames
+
+        # Define the codec and create VideoWriter object
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for MP4
+        out = cv2.VideoWriter(save_path, fourcc, effective_frame_rate, (frame_width, frame_height), isColor=False)
 
         frame_count = 0
         pbar = tqdm(total=total_frames, desc="Processing Video")  # Initialize the progress bar

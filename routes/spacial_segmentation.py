@@ -84,31 +84,48 @@ def get_bounding_boxes(short_id):
         all_bounding_boxes.append(bounding_boxes)
         evaluated_saliency.append(evaluate_bounding_box_success)
 
+    print(sum([len(i) for i in evaluated_saliency]))
+
     print("Interpolating the missing positions within each segment")
     all_interpolated_boxes = []
-    for bounding_box_segment in all_bounding_boxes:
+    interpolated_saliency = []
+
+    for segment_index, bounding_box_segment in enumerate(all_bounding_boxes):
+        segment_saliency = evaluated_saliency[segment_index]
         segment_bounding_boxes = []
+        segment_saliency_values = []
         for index, bounding_box in enumerate(bounding_box_segment):
             if index == len(bounding_box_segment) - 1:
                 segment_bounding_boxes.extend([bounding_box] * 5)
+                segment_saliency_values.extend([segment_saliency[index]] * 5)
             else:
-
                 segment_bounding_boxes.append(bounding_box)
+                segment_saliency_values.append(segment_saliency[index])
+
                 next_bounding_box = bounding_box_segment[index + 1]
+                current_saliency = segment_saliency[index]
+                next_saliency_value = segment_saliency[index + 1]
 
                 for i in range(4):
-                    new_bounding_box = [(bounding_box[0] + next_bounding_box[0]) // 2, bounding_box[1], bounding_box[2],
+                    new_bounding_box = [abs((i *(bounding_box[0] - next_bounding_box[0])) // 5) + bounding_box[0], bounding_box[1], bounding_box[2],
                                         bounding_box[3]]
                     segment_bounding_boxes.append(new_bounding_box)
+                    segment_saliency_values.append(abs(i * (current_saliency - next_saliency_value) // 5) + current_saliency)
 
         all_interpolated_boxes.extend(segment_bounding_boxes)
+        interpolated_saliency.extend(segment_saliency_values)
 
-    integer_boxes = [list(i) for i in all_interpolated_boxes]
+    integer_boxes = [list(i) for i in all_interpolated_boxes][:short_doc['total_frame_count'] + 1]
+    saliency_vals = [float(i) for i in interpolated_saliency][:short_doc['total_frame_count'] + 1]
 
+    print(len(integer_boxes), len(saliency_vals))
     firebase_services.update_document(
         "shorts",
         short_id,
-        {"bounding_boxes": json.dumps({"boxes": integer_boxes})}
+        {
+            "bounding_boxes": json.dumps({"boxes": integer_boxes}),
+            "saliency_values": json.dumps({"saliency_vals": saliency_vals})
+        }
     )
 
     return "Completed!"
