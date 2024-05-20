@@ -142,6 +142,7 @@ def create_segments(fixed_length_transcripts, boundaries, video_id, update_progr
                     'video_id': video_id,  # This might need to be set differently
                     'index': len(segments),
                     'segment_status': "Topical Segment Created",
+                    'previous_segment_status': "Topical Segment Created",
                     'transcript': " ".join(current_segment_transcripts),
                     'words': str(current_words)
                 }
@@ -170,6 +171,7 @@ def create_segments(fixed_length_transcripts, boundaries, video_id, update_progr
             'video_id': video_id,
             'index': len(segments),
             'segment_status': "Topical Segment Created",
+            'previous_segment_status': "Topical Segment Created",
             'transcript': " ".join(current_segment_transcripts),
             'words': str(current_words)
         }

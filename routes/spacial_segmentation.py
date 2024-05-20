@@ -56,6 +56,11 @@ def get_bounding_boxes(short_id):
 
     print("Loading Saliency Video")
     short_video_saliency = firebase_services.download_file_to_temp(short_doc['short_video_saliency'])
+
+    if 'cuts' not in short_doc.keys():
+        determine_boundaries(short_id)
+
+    short_doc = firebase_services.get_document("shorts", short_id)
     cuts = short_doc['cuts']
 
     print("Adjusted Frames")

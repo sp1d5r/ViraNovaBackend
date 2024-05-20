@@ -38,7 +38,7 @@ def process_video_upload(project_id, ip_address, api_route, video_id):
     # Create and add a task to the queue
     create_task(client, project, queue, location, url)
 
-def temporal_segmentation(event, context):
+def edit_segments(event, context):
     """
     Handle the document status change.
 
@@ -65,14 +65,14 @@ def temporal_segmentation(event, context):
     document_id = doc_path.split('/')[-1]
 
 
-    if data and 'short_status' in data and 'previous_short_status' in data and data['short_status'] != data['previous_short_status']:
-        new_status = data['short_status']
+    if data and 'segment_status' in data and 'previous_segment_status' in data and data['segment_status'] != data['previous_segment_status']:
+        new_status = data['segment_status']
         # Update previous status to match new status so doesn't trigger till status changed
-        db.document(doc_path).update({"previous_short_status": new_status})
+        db.document(doc_path).update({"previous_segment_status": new_status})
         print(f"Document with new status: {new_status}")
 
         status_route_mapping = {
-            "Edit Transcript": "temporal-segmentation",
+            "Crop Segment": "crop-segment",
         }
 
         if new_status in status_route_mapping:

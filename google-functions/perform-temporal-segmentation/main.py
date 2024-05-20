@@ -73,7 +73,11 @@ def temporal_segmentation(event, context):
 
         status_route_mapping = {
             "Edit Transcript": "temporal-segmentation",
-            "Generate Audio": "generate-test-audio"
+            "Generate Audio": "generate-test-audio",
+            "Create Short Video": "create-short-video",
+            "Generate Saliency": "get_saliency_for_short",
+            "Determine Video Boundaries": "determine-boundaries",
+            "Get Bounding Boxes": "get-bounding-boxes"
         }
 
         if new_status in status_route_mapping:

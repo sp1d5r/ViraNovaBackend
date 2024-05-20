@@ -293,7 +293,7 @@ def crop_video_to_segment(segment_id):
     firebase_service.upload_file_from_temp(output_path, destination_blob_name)
 
     # 4) Update location on short document
-    firebase_service.update_document("topical_segments", segment_id, {"video_segment_location": output_path})
+    firebase_service.update_document("topical_segments", segment_id, {"video_segment_location": destination_blob_name})
 
     # 5) Cleanup
     os.remove(input_path)
