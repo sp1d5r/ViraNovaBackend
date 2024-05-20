@@ -1,7 +1,9 @@
-from scipy.interpolate import interp1d
-import numpy as np
+import os
+
 from services.verify_video_document import parse_and_verify_short
 from services.firebase import FirebaseService
+import cv2
+import tempfile
 from flask import Blueprint
 from services.video_analyser.video_analyser import VideoAnalyser
 from services.bounding_box_generator.sliding_window_box_generation import SlidingWindowBoundingBoxGenerator
@@ -136,6 +138,70 @@ def get_bounding_boxes(short_id):
     return "Completed!"
 
 
+@spacial_segmentation.route("/create-cropped-video/<short_id>")
+def create_cropped_video(short_id):
+    firebase_service = FirebaseService()
+    short_doc = firebase_service.get_document("shorts", short_id)
 
+    if not "short_clipped_video" in short_doc.keys():
+        print("Clipped video doesn't exist")
+        return "Failed - No clipped video"
+
+    clipped_location = short_doc['short_clipped_video']
+    temp_clipped_file = firebase_service.download_file_to_temp(clipped_location)
+
+    if not "bounding_boxes" in short_doc.keys():
+        print("Bounding boxes do not exist")
+        return "Failed - No bounding boxes"
+
+    bounding_boxes = json.loads(short_doc['bounding_boxes'])['boxes']
+    _, output_path = tempfile.mkstemp(suffix='.mp4')
+
+    cap = cv2.VideoCapture(temp_clipped_file)
+    if not cap.isOpened():
+        print("Error: Could not open video.")
+        exit()
+
+    # Get video properties
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Define the codec
+
+    # Assuming all bounding boxes have the same size, we use the first one to set the output video size
+    if bounding_boxes:
+        _, _, width, height = bounding_boxes[0]
+        # Create a video writer for the output video with the size of the bounding box
+        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    else:
+        print("Error: Bounding box list is empty.")
+        exit()
+
+    frame_index = 0
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break  # Break the loop if there are no frames left to read
+
+        if frame_index < len(bounding_boxes):
+            x, y, w, h = bounding_boxes[frame_index]
+            # Crop the frame using the bounding box
+            cropped_frame = frame[y:y + h, x:x + w]
+            out.write(cropped_frame)
+        else:
+            print(f"No bounding box for frame {frame_index}, skipping.")
+
+        frame_index += 1
+
+    # Release everything when done
+    cap.release()
+    out.release()
+
+    # Create an output path
+    destination_blob_name = "finished-short/" + short_id + "-" + "".join(clipped_location.split("/")[1:])
+    firebase_service.upload_file_from_temp(output_path, destination_blob_name)
+
+    firebase_service.update_document("shorts", short_id, {"finished_short_location": destination_blob_name})
+
+    print("Finished Video!")
+    os.remove(temp_clipped_file)
 
 

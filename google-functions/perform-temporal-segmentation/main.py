@@ -77,7 +77,9 @@ def temporal_segmentation(event, context):
             "Create Short Video": "create-short-video",
             "Generate Saliency": "get_saliency_for_short",
             "Determine Video Boundaries": "determine-boundaries",
-            "Get Bounding Boxes": "get-bounding-boxes"
+            "Get Bounding Boxes": "get-bounding-boxes",
+            "Preview Video": "create-cropped-video"
+
         }
 
         if new_status in status_route_mapping:
