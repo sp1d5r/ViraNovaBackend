@@ -13,6 +13,7 @@ class VideoAnalyser():
             return None, None
 
         prev_frame = None
+        fps = cap.get(cv2.CAP_PROP_FPS)
         differences = []  # List to store the difference values
         last_frames = 0  # Optional: store frames for manual review
 
@@ -37,7 +38,7 @@ class VideoAnalyser():
 
         cap.release()
 
-        return differences, last_frames
+        return differences, last_frames, fps
 
     def get_camera_cuts(self, differences):
         mean_difference = np.mean(differences)

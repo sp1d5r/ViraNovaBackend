@@ -29,7 +29,7 @@ def determine_boundaries(short_id):
     print("Getting temporary file")
     temp_file = firebase_services.download_file_to_temp(video_path)
 
-    diff, last_frame = video_analyser.get_differences(temp_file)
+    diff, last_frame, fps = video_analyser.get_differences(temp_file)
     cuts = video_analyser.get_camera_cuts(diff)
 
     firebase_services.update_document(
@@ -38,7 +38,8 @@ def determine_boundaries(short_id):
         {
             'cuts': cuts,
             "visual_difference": json.dumps({ "frame_differences": diff }),
-            "total_frame_count": last_frame
+            "total_frame_count": last_frame,
+            "fps": fps
         }
     )
 
@@ -199,7 +200,7 @@ def create_cropped_video(short_id):
     destination_blob_name = "finished-short/" + short_id + "-" + "".join(clipped_location.split("/")[1:])
     firebase_service.upload_file_from_temp(output_path, destination_blob_name)
 
-    firebase_service.update_document("shorts", short_id, {"finished_short_location": destination_blob_name})
+    firebase_service.update_document("shorts", short_id, {"finished_short_location": destination_blob_name, "finished_short_fps": fps})
 
     print("Finished Video!")
     os.remove(temp_clipped_file)

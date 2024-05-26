@@ -2,6 +2,7 @@ import ast
 from flask import Blueprint
 from services.firebase import FirebaseService
 from services.langchain_chains.crop_segment import requires_cropping_chain, delete_operation_chain
+from services.saliency_detection.segmentation_optic_flow_saliency_detection import OpticFlowSegmentedSaliencyDetector
 from services.saliency_detection.segmentation_saliency_detector import SegmentedSaliencyDetector
 from services.verify_video_document import parse_and_verify_short, parse_and_verify_video, parse_and_verify_segment
 from datetime import datetime
@@ -366,7 +367,7 @@ def create_short_video(short_id):
 @temporal_segmentation.route("/get_saliency_for_short/<short_id>")
 def get_saliency_for_short(short_id):
     firebase_service = FirebaseService()
-    saliency_service = SegmentedSaliencyDetector()
+    saliency_service = OpticFlowSegmentedSaliencyDetector()
 
     print("Getting Documents")
     short_document = firebase_service.get_document("shorts", short_id)
