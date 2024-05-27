@@ -65,8 +65,8 @@ msgpack==1.0.7
 multidict==6.0.5
 mypy-extensions==1.0.0
 networkx==3.3
-numpy==1.23.5
-openai==1.26.0
+numpy==1.26.4
+openai==1.30.3
 opencv-contrib-python==4.9.0.80
 opencv-python-headless==4.9.0.80
 orjson==3.10.3
