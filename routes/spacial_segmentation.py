@@ -1,5 +1,6 @@
 import os
 
+from services.bounding_box_services import smooth_bounding_boxes
 from services.verify_video_document import parse_and_verify_short
 from services.firebase import FirebaseService
 import cv2
@@ -120,6 +121,7 @@ def get_bounding_boxes(short_id):
                     segment_bounding_boxes.append(new_bounding_box)
                     segment_saliency_values.append(abs(i * (current_saliency - next_saliency_value) // 5) + current_saliency)
 
+        segment_bounding_boxes = smooth_bounding_boxes(segment_bounding_boxes, window_size=max(int(len(segment_bounding_boxes) / 5), 1))
         all_interpolated_boxes.extend(segment_bounding_boxes)
         interpolated_saliency.extend(segment_saliency_values)
 
@@ -204,5 +206,7 @@ def create_cropped_video(short_id):
 
     print("Finished Video!")
     os.remove(temp_clipped_file)
+
+    return "Done"
 
 
