@@ -1,6 +1,6 @@
 from langchain.output_parsers import PydanticOutputParser
 from langchain_core.prompts import PromptTemplate
-from langchain_core.pydantic_v1 import BaseModel, Field, validator
+from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_openai import ChatOpenAI
 
 model = ChatOpenAI(model_name='gpt-3.5-turbo-16k')
@@ -18,4 +18,4 @@ idea_generator_prompt = PromptTemplate(
     partial_variables={"format_instructions": idea_generator_parser.get_format_instructions()},
 )
 
-idea_generator_chain = idea_generator_prompt | model | idea_generator_parser
+idea_generator_chain = (idea_generator_prompt | model | idea_generator_parser).with_config({"run_name": "Short Idea Generator", "tags": ["short-idea-generator"]})

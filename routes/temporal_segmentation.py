@@ -1,4 +1,6 @@
 import ast
+import uuid
+
 from flask import Blueprint
 from services.firebase import FirebaseService
 from services.langchain_chains.crop_segment import requires_cropping_chain, delete_operation_chain
@@ -15,6 +17,7 @@ from services.video_clipper import VideoClipper
 
 
 # Route Functions
+
 def delete_operation(words_with_index, start_index, end_index):
     # Find the position in the list for the start index
     start_position = None
@@ -26,13 +29,13 @@ def delete_operation(words_with_index, start_index, end_index):
     if start_position is None:
         raise ValueError("Start index not found in the current list of words.")
 
-    # Modify the list to include the deletion placeholder and remove other words in the range
+    # Modify the list to clearly indicate deletions
     new_words_with_index = []
     for position, (index, word) in enumerate(words_with_index):
-        if position == start_position:
-            # Add a placeholder text indicating a deletion from start_index to end_index
-            new_words_with_index.append((index, f"..."))
-        elif index < start_index or index > end_index:
+        if start_index <= index <= end_index:
+            # Replace the word with a placeholder indicating deletion
+            new_words_with_index.append((-1, word))
+        else:
             new_words_with_index.append((index, word))
 
     return new_words_with_index
@@ -69,7 +72,7 @@ def perform_temporal_segmentation(short_id):
         short_idea = short_document['short_idea']
 
         error_count = 0
-        MAX_ERROR_LIMIT = short_document["error_count"]
+        MAX_ERROR_LIMIT = 5
 
         print(f"error_count {error_count}, max limit: {short_document}")
 
@@ -83,20 +86,24 @@ def perform_temporal_segmentation(short_id):
                     "type": "message"
                 })
 
+                requires_cropping_uuid = uuid.uuid4()
                 does_transcript_require_cropping = requires_cropping_chain.invoke(
-                    {"transcript": " ".join([f"{i[1]}" for i in words_with_index]), "short_idea": short_idea})
+                    {"transcript": " ".join([f"{i[1]}" for i in words_with_index if i[0] >= 0]), "short_idea": short_idea},
+                    config={"run_id": requires_cropping_uuid, "metadata": {"short_id": short_id}}
+                )
 
                 update_logs({
                     "time": datetime.now(),
                     "title": "Chain Operation",
                     "message": f"CHAIN: Does the transcript need to be cropped = {does_transcript_require_cropping.requires_cropping}",
-                    "type": "message"
+                    "type": "message",
                 })
 
                 update_logs({
                     "time": datetime.now(),
                     "message": f"CHAIN: Explanation: {does_transcript_require_cropping.explanation}",
-                    "type": "message"
+                    "type": "message",
+                    "run_id": str(requires_cropping_uuid),
                 })
 
                 if does_transcript_require_cropping.requires_cropping:
@@ -106,16 +113,20 @@ def perform_temporal_segmentation(short_id):
                         "type": "message"
                     })
 
+                    delete_operation_uuid = uuid.uuid4()
                     transcript_delete_operation = delete_operation_chain.invoke(
                         {"transcript": " ".join([f"({i[0]}) {i[1]}" for i in words_with_index]),
-                         "short_idea": short_idea})
+                         "short_idea": short_idea},
+                        config={"run_id": delete_operation_uuid, "metadata": {"short_id": short_id}}
+                    )
 
                     update_logs({
                         "time": datetime.now(),
                         "message":f"CHAIN: Deleting between ({transcript_delete_operation.start_index} - {transcript_delete_operation.end_index}). Explanation: {transcript_delete_operation.explanation}",
                         "type": "delete",
                         "start_index": transcript_delete_operation.start_index,
-                        "end_index": transcript_delete_operation.end_index
+                        "end_index": transcript_delete_operation.end_index,
+                        "run_id": str(transcript_delete_operation),
                     })
 
 
@@ -158,7 +169,7 @@ def perform_temporal_segmentation(short_id):
         if error_count >= MAX_ERROR_LIMIT:
             firebase_service.update_document('shorts', short_id, {'short_status': "Clipping Failed"})
 
-        return "Completed Segment Idea Extraction", 200
+        return "Completed Short Extraction", 200
     else:
         return error_message, 404
 

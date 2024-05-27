@@ -1,3 +1,5 @@
+import uuid
+
 from flask import Blueprint, jsonify
 from services.firebase import FirebaseService
 from services.langchain_chains.idea_generator_chain import idea_generator_chain
@@ -19,7 +21,9 @@ def generate_short_ideas_from_segments(video_id: str):
                 if segment['flagged']:
                     continue
 
-                tiktok_idea = idea_generator_chain.invoke({'transcript': segment['transcript']})
+                tiktok_idea_uuid = uuid.uuid4()
+                tiktok_idea = idea_generator_chain.invoke({'transcript': segment['transcript']}, config={"run_id": tiktok_idea_uuid, "metadata": {"video_id": video_id, "topical_segment_id": segment['id']}})
+
                 if tiktok_idea.tiktok_idea == '':
                     continue
 
@@ -29,6 +33,7 @@ def generate_short_ideas_from_segments(video_id: str):
                     {
                         'short_idea': tiktok_idea.tiktok_idea,
                         'short_idea_explanation': tiktok_idea.explanation,
+                        'short_idea_run_id': str(tiktok_idea_uuid),
                         'segment_status': "TikTok Idea Generated"
                     })
             except Exception as e:
