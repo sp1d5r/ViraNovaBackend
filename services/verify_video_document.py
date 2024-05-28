@@ -4,13 +4,13 @@ def parse_and_verify_video(video_document: dict) -> (bool, str):
 
     # Define the required keys and their expected types
     required_keys = {
-        "originalFileName": str,
+        # "originalFileName": str,
         "processingProgress": int,
         "queuePosition": int,
         "status": str,
         "uid": str,
         "uploadTimestamp": int,
-        "videoPath": str,
+        # "videoPath": str,
     }
 
     # Check for missing keys

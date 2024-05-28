@@ -73,6 +73,7 @@ def preprocess_video_documents(event, context):
 
         status_route_mapping = {
             "Uploaded": "split-video",
+            "Link Provided": "begin-youtube-link-download",
             "Transcribing": "transcribe-and-diarize",
             "Segmenting": "v0/extract-topical-segments",
             "Summarizing Segments": "summarise-segments",

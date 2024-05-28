@@ -90,6 +90,13 @@ class FirebaseService:
         return f"File {blob_name} uploaded."
 
     def upload_transcription_to_firestore(self, transcribed_content, video_id, update_progress):
+        previous_transcripts = self.query_documents("transcriptions", "video_id", video_id)
+
+        print("Previous Transcripts", previous_transcripts)
+        if previous_transcripts and len(previous_transcripts) > 0:
+            for transcripts in previous_transcripts:
+                self.delete_document('transcriptions', transcripts['id'])
+
         transcriptions_collection = self.db.collection('transcriptions')
         transcripts_list = []
         words_list = []
@@ -145,6 +152,56 @@ class FirebaseService:
             words_collection_ref = transcript_doc_ref.collection('words')
             for word_data in words_data:
                 words_collection_ref.add(word_data)
+            transcripts_list.append(transcript_data)
+
+        return transcripts_list, words_list
+
+    def upload_youtube_transcription_to_firestore(self, transcribed_df, video_id, update_progress):
+        previous_transcripts = self.query_documents("transcriptions", "video_id", video_id)
+        print("Previous Transcripts", previous_transcripts)
+        if previous_transcripts and len(previous_transcripts) > 0:
+            for index, transcripts in enumerate(previous_transcripts):
+                update_progress((index / len(previous_transcripts)) * 100)
+                self.delete_document('transcriptions', transcripts['id'])
+
+
+        transcriptions_collection = self.db.collection('transcriptions')
+        transcripts_list = []
+        words_list = []
+
+        # Group by transcript_id to handle multiple words belonging to the same transcript
+        grouped_df = transcribed_df.groupby('transcript_id')
+
+        for index, (transcript_id, group) in enumerate(grouped_df):
+            update_progress(index / len(grouped_df) * 100)
+
+            transcript_data = {
+                'transcript': ' '.join(group['word'].tolist()),  # Combine words into a single transcript string
+                'confidence': float(group['confidence'].mean()),  # Convert numpy float to Python float
+                'video_id': video_id,
+                'language_code': group['language'].iloc[0],
+                'earliest_start_time': float(group['start_time'].min()),  # Convert numpy int to Python float
+                'latest_end_time': float(group['end_time'].max()),  # Convert numpy int to Python float
+                'index': index
+            }
+
+            # Create a new document for this transcript in Firestore
+            transcript_doc_ref = transcriptions_collection.document(transcript_id)
+            transcript_doc_ref.set(transcript_data)
+
+            # Now add words to the words sub collection
+            words_collection_ref = transcript_doc_ref.collection('words')
+            for _, word_row in group.iterrows():
+                word_data = {
+                    'word': word_row['word'],
+                    'start_time': float(word_row['start_time']),  # Convert numpy int to Python float
+                    'end_time': float(word_row['end_time']),  # Convert numpy int to Python float
+                    'confidence': float(word_row['confidence']),  # Ensure confidence is a Python float
+                    'index': int(word_row.name)  # Ensure index is an int
+                }
+                words_collection_ref.add(word_data)
+                words_list.append(word_data)
+
             transcripts_list.append(transcript_data)
 
         return transcripts_list, words_list

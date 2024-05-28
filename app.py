@@ -11,6 +11,7 @@ from routes.split_video_and_audio import split_video_and_audio
 from routes.topical_segmentation import topical_segmentation
 from flask_cors import CORS
 
+from routes.youtube_link import youtube_link
 
 app = Flask(__name__)
 
@@ -38,6 +39,7 @@ app.register_blueprint(get_shorts_and_segments)
 app.register_blueprint(generate_short_ideas)
 app.register_blueprint(temporal_segmentation)
 app.register_blueprint(spacial_segmentation)
+app.register_blueprint(youtube_link)
 
 
 @app.route("/")

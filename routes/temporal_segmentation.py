@@ -41,8 +41,6 @@ def delete_operation(words_with_index, start_index, end_index):
     return new_words_with_index
 
 # Routes
-
-
 temporal_segmentation = Blueprint("temporal_segmentation", __name__)
 
 
@@ -115,7 +113,7 @@ def perform_temporal_segmentation(short_id):
 
                     delete_operation_uuid = uuid.uuid4()
                     transcript_delete_operation = delete_operation_chain.invoke(
-                        {"transcript": " ".join([f"({i[0]}) {i[1]}" for i in words_with_index]),
+                        {"transcript": " ".join([f"({i[0]}) {i[1]}" for i in words_with_index if i[0] > 0]),
                          "short_idea": short_idea},
                         config={"run_id": delete_operation_uuid, "metadata": {"short_id": short_id}}
                     )
