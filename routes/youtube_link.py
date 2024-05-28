@@ -32,6 +32,10 @@ def begin_youtube_link_download(video_id: str):
         video_filename = temp_video_path.split('/')[-1]
         audio_filename = temp_audio_path.split('/')[-1]
 
+        firebase_service.update_document('videos', video_id, {
+            "originalFileName": video_filename
+        })
+
         video_blob_destination = f"videos-raw/{video_id}/{video_filename}"
         firebase_service.upload_file_from_temp(temp_video_path, video_blob_destination)
 
