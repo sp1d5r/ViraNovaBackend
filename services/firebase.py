@@ -160,44 +160,46 @@ class FirebaseService:
         previous_transcripts = self.query_documents("transcriptions", "video_id", video_id)
         print("Previous Transcripts", previous_transcripts)
         if previous_transcripts and len(previous_transcripts) > 0:
-            for index, transcripts in enumerate(previous_transcripts):
+            for index, transcript in enumerate(previous_transcripts):
                 update_progress((index / len(previous_transcripts)) * 100)
-                self.delete_document('transcriptions', transcripts['id'])
-
+                self.delete_document('transcriptions', transcript['id'])
 
         transcriptions_collection = self.db.collection('transcriptions')
         transcripts_list = []
         words_list = []
 
-        # Group by transcript_id to handle multiple words belonging to the same transcript
-        grouped_df = transcribed_df.groupby('transcript_id')
+        # Group by 'group_index' to handle multiple words belonging to the same transcript
+        largest_group_index = max(list(transcribed_df['group_index']))
+        grouped_df = transcribed_df.groupby('group_index')
 
-        for index, (transcript_id, group) in enumerate(grouped_df):
-            update_progress(index / len(grouped_df) * 100)
+        # Iterate through each group produced by the groupby operation
+        for group_index, group in grouped_df:
+            update_progress(group_index / len(grouped_df) * 100)
+            transcript_id = f"{video_id}_{group_index}"
 
             transcript_data = {
                 'transcript': ' '.join(group['word'].tolist()),  # Combine words into a single transcript string
-                'confidence': float(group['confidence'].mean()),  # Convert numpy float to Python float
+                'confidence': float(group['confidence'].mean()),  # Average confidence for the group
                 'video_id': video_id,
-                'language_code': group['language'].iloc[0],
-                'earliest_start_time': float(group['start_time'].min()),  # Convert numpy int to Python float
-                'latest_end_time': float(group['end_time'].max()),  # Convert numpy int to Python float
-                'index': index
+                'language_code': group['language'].iloc[0],  # Assuming all entries in a group have the same language
+                'earliest_start_time': float(group['start_time'].min()),  # Earliest start time in the group
+                'latest_end_time': float(group['end_time'].max()),  # Latest end time in the group
+                'index': group_index  # index of the group
             }
 
             # Create a new document for this transcript in Firestore
             transcript_doc_ref = transcriptions_collection.document(transcript_id)
             transcript_doc_ref.set(transcript_data)
 
-            # Now add words to the words sub collection
+            # Now add words to the words sub-collection
             words_collection_ref = transcript_doc_ref.collection('words')
             for _, word_row in group.iterrows():
                 word_data = {
                     'word': word_row['word'],
-                    'start_time': float(word_row['start_time']),  # Convert numpy int to Python float
-                    'end_time': float(word_row['end_time']),  # Convert numpy int to Python float
-                    'confidence': float(word_row['confidence']),  # Ensure confidence is a Python float
-                    'index': int(word_row.name)  # Ensure index is an int
+                    'start_time': float(word_row['start_time']),
+                    'end_time': float(word_row['end_time']),
+                    'confidence': float(word_row['confidence']),
+                    'index': int(word_row.name)  # Using the DataFrame index as the word index
                 }
                 words_collection_ref.add(word_data)
                 words_list.append(word_data)

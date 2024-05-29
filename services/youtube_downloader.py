@@ -56,7 +56,8 @@ def clean_captions(video_id, caption, key):
                         'end_time': round((start_time + int(seg['tOffsetMs']) + duration) / 1000, 2),
                         'word': seg['utf8'].strip(),
                         'confidence': seg.get('acAsrConf', 100) / 100.0,  # Normalizing confidence to 0-1 scale
-                        'language': key
+                        'language': key,
+                        'group_index': event_index
                     }
                     words.append(word_info)
 
