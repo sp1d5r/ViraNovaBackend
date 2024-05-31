@@ -174,6 +174,7 @@ def perform_temporal_segmentation(short_id):
 
 
 def handle_operations_from_logs(logs, words):
+    # If update also update in spacial_segmentation
     delete_operations = [i for i in logs if i['type'] == "delete"]
     delete_positions = [{'start': i['start_index'], 'end': i['end_index']} for i in delete_operations]
 

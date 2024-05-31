@@ -1,7 +1,8 @@
+import ast
 import os
-
 from services.bounding_box_services import smooth_bounding_boxes
 from services.verify_video_document import parse_and_verify_short
+from services.add_text_to_video_service import AddTextToVideoService
 from services.firebase import FirebaseService
 import cv2
 import tempfile
@@ -9,6 +10,7 @@ from flask import Blueprint
 from services.video_analyser.video_analyser import VideoAnalyser
 from services.bounding_box_generator.sliding_window_box_generation import SlidingWindowBoundingBoxGenerator
 import json
+
 
 spacial_segmentation = Blueprint("spacial_segmentation", __name__)
 
@@ -141,10 +143,72 @@ def get_bounding_boxes(short_id):
     return "Completed!"
 
 
+def handle_operations_from_logs(logs, words):
+    # If update also update in temporal segmentation
+    delete_operations = [i for i in logs if i['type'] == "delete"]
+    delete_positions = [{'start': i['start_index'], 'end': i['end_index']} for i in delete_operations]
+
+    for word in words:
+        word['position'] = "keep"
+
+    for operation in delete_positions:
+        for i in range(operation['start'], operation['end'] + 1):
+            words[i]['position'] = 'delete'
+
+
+    # Apply operations
+    output_words = []
+    for word in words:
+        if word['position'] == 'delete':
+            continue
+        if word['position'] == 'keep':
+            output_words.append(word)
+
+    return output_words
+
+def merge_consecutive_cuts(cuts):
+    if not cuts:
+        return []
+
+    # Start with the first cut
+    merged_cuts = [cuts[0]]
+
+    for current_start, current_end in cuts[1:]:
+        last_start, last_end = merged_cuts[-1]
+
+        # If the current start time is the same as the last end time, merge them
+        if current_start == last_end:
+            merged_cuts[-1] = (last_start, current_end)  # Extend the last segment
+        else:
+            merged_cuts.append((current_start, current_end))
+
+    return merged_cuts
+
+
+def adjust_timestamps(merge_cuts, words, start_time):
+    adjusted_words = []
+    cumulative_offset = 0
+    current_cut_index = 0
+    for word in words:
+        word_start = word['start_time'] - start_time
+        word_end = word['end_time'] - start_time
+        while current_cut_index < len(merge_cuts) and word_end > merge_cuts[current_cut_index][1]:
+            cumulative_offset += merge_cuts[current_cut_index][1] - merge_cuts[current_cut_index][0]
+            current_cut_index += 1
+        if current_cut_index >= len(merge_cuts):
+            break
+        if merge_cuts[current_cut_index][0] <= word_start <= merge_cuts[current_cut_index][1]:
+            adjusted_word = word.copy()
+            adjusted_word['start_time'] = round(word_start - merge_cuts[current_cut_index][0] + cumulative_offset, 3)
+            adjusted_word['end_time'] = round(word_end - merge_cuts[current_cut_index][0] + cumulative_offset, 3)
+            adjusted_words.append(adjusted_word)
+    return adjusted_words
+
 @spacial_segmentation.route("/create-cropped-video/<short_id>")
 def create_cropped_video(short_id):
     firebase_service = FirebaseService()
     short_doc = firebase_service.get_document("shorts", short_id)
+    text_service = AddTextToVideoService()
 
     if not "short_clipped_video" in short_doc.keys():
         print("Clipped video doesn't exist")
@@ -197,6 +261,91 @@ def create_cropped_video(short_id):
     # Release everything when done
     cap.release()
     out.release()
+
+    COLOUR = (13, 255, 0)
+    SHADOW_COLOUR = (192, 255, 189)
+    LOGO = "ViraNova"
+
+    if 'short_title_top' in short_doc.keys():
+        output_path = text_service.add_text_centered(output_path, short_doc['short_title_top'].upper(), 1,
+                                                     thickness='Bold', color=(255, 255, 255), shadow_color=(0, 0, 0),
+                                                     shadow_offset=(1, 1), outline=True, outline_color=(0, 0, 0),
+                                                     outline_thickness=1, offset=(0, 0.2))
+
+    if 'short_title_bottom' in short_doc.keys():
+        output_path = text_service.add_text_centered(output_path, short_doc['short_title_bottom'].upper(), 1, thickness='Bold',
+                                                 color=COLOUR, shadow_color=SHADOW_COLOUR,
+                                                 shadow_offset=(1, 1), outline=False, outline_color=(0, 0, 0),
+                                                 outline_thickness=1, offset=(0, 0.23))
+
+    output_path = text_service.add_text_centered(output_path, LOGO, 0.8,
+                                                 thickness='Bold',
+                                                 color=COLOUR, shadow_color=(0,0,0),
+                                                 shadow_offset=(1, 1), outline=False, outline_color=(0, 0, 0),
+                                                 outline_thickness=1, offset=(0, 0.1))
+
+    add_transcript = True
+    if add_transcript:
+        segment_document = firebase_service.get_document('topical_segments', short_doc['segment_id'])
+
+        segment_document_words = ast.literal_eval(segment_document['words'])
+        print("Read Segment Words")
+        logs = short_doc['logs']
+        words_to_handle = handle_operations_from_logs(logs, segment_document_words)
+
+        start_time = segment_document_words[0]['start_time']
+        keep_cuts = [(round(i['start_time'] - start_time, 3), round(i['end_time'] - start_time, 3)) for i in
+                     words_to_handle]
+
+        merge_cuts = merge_consecutive_cuts(keep_cuts)
+
+        adjusted_words_to_handle = adjust_timestamps(merge_cuts, words_to_handle, start_time)
+
+        max_chars = 15
+        combined_text = ""
+        current_start_time = adjusted_words_to_handle[0]['start_time']
+        current_end_time = adjusted_words_to_handle[0]['end_time']
+        texts = []
+        start_times = []
+        end_times = []
+
+        for word in adjusted_words_to_handle:
+            word_text = word['word']
+            start_time = word['start_time']
+            end_time = word['end_time']
+
+            if len(combined_text) + len(word_text) <= max_chars:
+                if combined_text:
+                    combined_text += " "
+                combined_text += word_text
+                current_end_time = end_time
+            else:
+                start_times.append(current_start_time)
+                end_times.append(current_end_time)
+                texts.append(combined_text)
+
+                # Reset Variables
+                combined_text = word_text
+                current_start_time = start_time
+                current_end_time = end_time
+
+        # update start and end_times  relation to that new clipped video
+        output_path = text_service.add_transcript(
+            input_path=output_path,
+            texts=[i.upper() for i in texts],
+            start_times=start_times,
+            end_times=end_times,
+            font_scale=1,
+            thickness='Bold',
+            color=(255, 255, 255),
+            shadow_color=(0, 0, 0),
+            shadow_offset=(1, 1),
+            outline=True,
+            outline_color=(0, 0, 0),
+            outline_thickness=2,
+            offset=(0, 0),
+        )
+
 
     # Create an output path
     destination_blob_name = "finished-short/" + short_id + "-" + "".join(clipped_location.split("/")[1:])
