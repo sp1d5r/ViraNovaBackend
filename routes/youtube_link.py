@@ -52,7 +52,7 @@ def begin_youtube_link_download(video_id: str):
 
         firebase_service.update_document('videos', video_id, {
             "videoPath": video_blob_destination,
-            "audioPath": audio_blob_destination
+            "audio_path": audio_blob_destination
         })
 
         firebase_service.update_document('videos', video_id,
