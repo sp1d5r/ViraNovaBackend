@@ -1,5 +1,8 @@
 import ast
 import os
+import subprocess
+
+from routes.temporal_segmentation import generate_test_audio
 from services.bounding_box_services import smooth_bounding_boxes
 from services.verify_video_document import parse_and_verify_short
 from services.add_text_to_video_service import AddTextToVideoService
@@ -204,6 +207,34 @@ def adjust_timestamps(merge_cuts, words, start_time):
             adjusted_words.append(adjusted_word)
     return adjusted_words
 
+
+import subprocess
+import os
+
+def add_audio_to_video(video_path, audio_path):
+    # Generate output video path by adding "_with_audio" before the extension
+    output_path = video_path.rsplit('.', 1)[0] + '_with_audio.mp4'
+
+    # Command to add audio to video using ffmpeg
+    command = [
+        'ffmpeg',
+        '-i', video_path,    # Input video file
+        '-i', audio_path,    # Input audio file
+        '-c:v', 'copy',      # Copy video as is
+        '-c:a', 'aac',       # Encode audio to AAC
+        '-strict', 'experimental',
+        output_path          # Output video file
+    ]
+
+    # Run the command with subprocess
+    subprocess.run(command, check=True)
+
+    # Delete the temporary files if the merge was successful
+    os.remove(video_path)
+    os.remove(audio_path)
+
+    return output_path
+
 @spacial_segmentation.route("/create-cropped-video/<short_id>")
 def create_cropped_video(short_id):
     firebase_service = FirebaseService()
@@ -346,6 +377,14 @@ def create_cropped_video(short_id):
             offset=(0, 0),
         )
 
+
+    generate_test_audio(short_id)
+
+    firebase_service = FirebaseService()
+    short_doc = firebase_service.get_document("shorts", short_id)
+
+    audio_path = firebase_service.download_file_to_temp(short_doc['temp_audio_file'], short_doc['temp_audio_file'].split(".")[-1])
+    output_path = add_audio_to_video(output_path, audio_path)
 
     # Create an output path
     destination_blob_name = "finished-short/" + short_id + "-" + "".join(clipped_location.split("/")[1:])
