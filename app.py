@@ -1,4 +1,3 @@
-from flask import Flask
 from routes.generate_short_ideas import generate_short_ideas
 from routes.get_random_video import get_random_video
 from routes.get_segmentation_masks import get_segmentation_mask
@@ -10,7 +9,8 @@ from routes.transcribe_and_diarize_audio import transcribe_and_diarize_audio
 from routes.split_video_and_audio import split_video_and_audio
 from routes.topical_segmentation import topical_segmentation
 from flask_cors import CORS
-from flask import Flask import flask_monitoringdashboard as dashboard
+from flask import Flask
+import flask_monitoringdashboard as dashboard
 
 from routes.youtube_link import youtube_link
 
