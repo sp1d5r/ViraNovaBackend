@@ -276,11 +276,32 @@ class FirebaseService:
 
         return response
 
+    def delete_collection(self, coll_ref, batch_size):
+        """Recursively delete a collection in batches."""
+        docs = coll_ref.limit(batch_size).stream()
+        deleted = 0
+
+        for doc in docs:
+            print(f'Deleting doc {doc.id} => {doc.to_dict()}')
+            doc.reference.delete()
+            deleted = deleted + 1
+
+        if deleted >= batch_size:
+            return self.delete_collection(coll_ref, batch_size)
+
+
     def delete_document(self, collection_name, document_id):
-        """Deletes a specific document from a collection."""
+        """Deletes a specific document and its subcollections."""
         doc_ref = self.db.collection(collection_name).document(document_id)
         doc = doc_ref.get()
         if doc.exists:
+            # Delete subcollections first
+            # Assuming we know the names of subcollections or we retrieve them dynamically
+            subcollections = doc.reference.collections()  # List subcollections
+            for subcollection in subcollections:
+                self.delete_collection(subcollection, batch_size=10)
+
+            # Now delete the document
             doc_ref.delete()
             return f"Document {document_id} in {collection_name} deleted successfully."
         else:

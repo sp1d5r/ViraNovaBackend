@@ -111,6 +111,7 @@ class AddTextToVideoService:
         cap.release()
         out.release()
 
+        os.remove(input_path)
         print("Text added to video, original file updated!")
         return temp_output_path  # Return the path of the updated file
 
@@ -205,6 +206,7 @@ class AddTextToVideoService:
         cap.release()
         out.release()
 
+        os.remove(input_path)
         print("Text added to video, original file updated!")
         return temp_output_path  # Return the path of the updated file
 

@@ -39,27 +39,36 @@ def extract_audio(video_path):
 
 
 def clean_captions(video_id, caption, key):
-    events = caption['events']
+    events = [i for i in caption['events'] if 'segs' in i and 'dDurationMs' in i and 'tStartMs']
     words = []
 
     for event_index, event in enumerate(events):
-        # Check if all required keys are present in the event
-        if 'segs' in event and 'tStartMs' in event and 'dDurationMs' in event:
-            start_time = int(event['tStartMs'])
-            end_time = int(event['tStartMs'])
-            for seg_index, seg in enumerate(event['segs']):
-                # Ensure necessary keys are in segment
-                if 'utf8' in seg and 'tOffsetMs' in seg:
+        seg_start_time = int(event['tStartMs'])
+        seg_duration = int(event['dDurationMs'])
+
+        for seg_index, seg in enumerate(event['segs']):
+            if 'utf8' in seg and seg['utf8'].strip() != '':
+                if seg_index < len(event['segs']) - 1:
                     word_info = {
                         'transcript_id': f"{video_id}_{event_index}",  # Unique transcript ID for each segment
-                        'start_time': round(int(end_time) / 1000, 2),
-                        'end_time': round((int(start_time) + int(seg['tOffsetMs'])) / 1000, 2),
+                        'start_time': round((seg_start_time + int(seg.get('tOffsetMs', 0))) / 1000, 2),
+                        'end_time': round((seg_start_time + int(event['segs'][seg_index + 1].get('tOffsetMs', 0))) / 1000, 2),
                         'word': seg['utf8'].strip(),
                         'confidence': seg.get('acAsrConf', 100) / 100.0,  # Normalizing confidence to 0-1 scale
                         'language': key,
                         'group_index': event_index
                     }
-                    end_time = round((int(start_time) + int(seg['tOffsetMs'])) / 1000, 2)
+                    words.append(word_info)
+                else:
+                    word_info = {
+                        'transcript_id': f"{video_id}_{event_index}",  # Unique transcript ID for each segment
+                        'start_time': round((seg_start_time + int(seg.get('tOffsetMs', 0))) / 1000, 2),
+                        'end_time': round((seg_start_time + int(seg_duration)) / 1000, 2),
+                        'word': seg['utf8'].strip(),
+                        'confidence': seg.get('acAsrConf', 100) / 100.0,  # Normalizing confidence to 0-1 scale
+                        'language': key,
+                        'group_index': event_index
+                    }
                     words.append(word_info)
 
     # Convert list of words to DataFrame

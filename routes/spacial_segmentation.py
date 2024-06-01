@@ -323,7 +323,11 @@ def create_cropped_video(short_id):
         print("Read Segment Words")
         logs = short_doc['logs']
         words_to_handle = handle_operations_from_logs(logs, segment_document_words)
-
+        words_to_handle = [
+            {**word, 'end_time': min(word['end_time'], words_to_handle[i + 1]['start_time'])}
+            if i + 1 < len(words_to_handle) else word
+            for i, word in enumerate(words_to_handle)
+        ]
         start_time = segment_document_words[0]['start_time']
         keep_cuts = [(round(i['start_time'] - start_time, 3), round(i['end_time'] - start_time, 3)) for i in
                      words_to_handle]

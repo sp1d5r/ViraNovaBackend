@@ -231,11 +231,16 @@ def generate_test_audio(short_id):
         if not is_valid_document:
             return error_message, 404
         else:
-            print("Collected semgnet document")
+            print("Collected segmnet document")
 
         segment_document_words = ast.literal_eval(segment_document['words'])
         print("Read Segment Words")
         words_to_handle = handle_operations_from_logs(logs, segment_document_words)
+        words_to_handle = [
+            {**word, 'end_time': min(word['end_time'], words_to_handle[i + 1]['start_time'])}
+            if i + 1 < len(words_to_handle) else word
+            for i, word in enumerate(words_to_handle)
+        ]
         print("Download Audio File to Memory")
         audio_stream = firebase_service.download_file_to_memory(audio_file)
         print("Create temporary audio file")
@@ -357,6 +362,11 @@ def create_short_video(short_id):
     start_time = segment_document_words[0]['start_time']
     print("Read Segment Words")
     words_to_handle = handle_operations_from_logs(logs, segment_document_words)
+    words_to_handle = [
+        {**word, 'end_time': min(word['end_time'], words_to_handle[i + 1]['start_time'])}
+        if i + 1 < len(words_to_handle) else word
+        for i, word in enumerate(words_to_handle)
+    ]
     print("Get clips start and end")
 
     keep_cuts = [(round(i['start_time'] - start_time, 3), round(i['end_time'] - start_time,3)) for i in words_to_handle]
