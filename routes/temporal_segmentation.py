@@ -242,17 +242,26 @@ def generate_test_audio(short_id):
         audio_data = AudioSegment.from_file_using_temporary_files(audio_stream)
 
         combined_audio = AudioSegment.silent(duration=0)
-        print("Perform operations}")
+        total_length = 0  # To keep track of expected length
+
         for word in words_to_handle:
             start_time = int(word['start_time'] * 1000)
             end_time = int(word['end_time'] * 1000)
+            segment_length = end_time - start_time
+            total_length += segment_length
             segment = audio_data[start_time:end_time]
             combined_audio += segment
+            print(f"Appended segment from {start_time} to {end_time}, segment length: {segment_length}, total expected length: {total_length}")
+
+        print("Final combined length (from segments):", total_length)
+        print("Actual combined audio length:", len(combined_audio))
 
         print("Loading the bytes stream")
         byte_stream = BytesIO()
         combined_audio.export(byte_stream,
                              format='mp4')  # Use 'mp4' as the format; adjust as necessary for your audio type
+
+        print("New combined audio length:", len(combined_audio))
 
         new_blob_location = 'temp-audio/' + "".join(audio_file.split("/")[1:])
 
