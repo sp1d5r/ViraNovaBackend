@@ -36,3 +36,6 @@ jobs:
           POSTGRES_DATABASE=${{ secrets.POSTGRES_DATABASE }}
           POSTGRES_SSLMODE=${{ secrets.POSTGRES_SSLMODE }}
           QDRANT_LOCATION=${{ secrets.QDRANT_LOCATION }}
+          LANGCHAIN_TRACING_V2=${{ secrets.LANGCHAIN_TRACING_V2}}
+          LANGCHAIN_API_KEY=${{ secrets.LANGCHAIN_API_KEY}}
+          LANGCHAIN_PROJECT=${{ secrets.LANGCHAIN_PROJECT}}
