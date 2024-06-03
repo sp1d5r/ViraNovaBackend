@@ -147,25 +147,21 @@ def get_bounding_boxes(short_id):
 
 
 def handle_operations_from_logs(logs, words):
-    # If update also update in temporal segmentation
-    delete_operations = [i for i in logs if i['type'] == "delete"]
-    delete_positions = [{'start': i['start_index'], 'end': i['end_index']} for i in delete_operations]
-
+    # Initialize all words with the position 'keep'
     for word in words:
         word['position'] = "keep"
 
-    for operation in delete_positions:
-        for i in range(operation['start'], operation['end'] + 1):
-            words[i]['position'] = 'delete'
+    # Apply operations in the order they appear
+    for log in logs:
+        if log['type'] == "delete":
+            for i in range(log['start_index'], log['end_index'] + 1):
+                words[i]['position'] = 'delete'
+        elif log['type'] == "undelete":
+            for i in range(log['start_index'], log['end_index'] + 1):
+                words[i]['position'] = 'keep'  # Restore to 'keep' if undeleted
 
-
-    # Apply operations
-    output_words = []
-    for word in words:
-        if word['position'] == 'delete':
-            continue
-        if word['position'] == 'keep':
-            output_words.append(word)
+    # Collect words to output that are not deleted
+    output_words = [word for word in words if word['position'] == 'keep']
 
     return output_words
 
