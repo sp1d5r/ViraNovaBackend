@@ -73,7 +73,7 @@ class VideoClipper:
             os.close(temp_fd)
             os.remove(temp_path)
 
-    def delete_segments_from_video(self, input_video_path, segments_to_keep, output_video_path):
+    def delete_segments_from_video(self, input_video_path, segments_to_keep, output_video_path, update_progress):
         # Load the source video
         video = VideoFileClip(input_video_path)
 
@@ -81,8 +81,9 @@ class VideoClipper:
         clips = []
 
         # Extract clips to keep from the video
-        for start, end in segments_to_keep:
+        for index, (start, end) in enumerate(segments_to_keep):
             clips.append(video.subclip(start, end))
+            update_progress((index / len(segments_to_keep))*100)
 
         # Concatenate the clips
         final_clip = concatenate_videoclips(clips)

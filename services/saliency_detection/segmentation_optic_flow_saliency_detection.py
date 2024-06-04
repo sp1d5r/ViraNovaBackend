@@ -97,8 +97,8 @@ class OpticFlowSegmentedSaliencyDetector(VideoSaliencyDetector):
             saliency_map = saliency_map.astype(np.uint8)
         output_writer.write(saliency_map)
 
-
-    def generate_video_saliency(self, video_path, skip_frames=5, save_path='saliency_video.mp4', type="max"):
+    def generate_video_saliency(self, video_path, update_progress, skip_frames=5, save_path='saliency_video.mp4',
+                                type="max"):
         cap = cv2.VideoCapture(video_path)
         ret, prev_frame = cap.read()
         prev_frame = self.load_and_prepare_frame(prev_frame)
@@ -106,23 +106,35 @@ class OpticFlowSegmentedSaliencyDetector(VideoSaliencyDetector):
         frame_width, frame_height = int(cap.get(3)), int(cap.get(4))
         original_frame_rate = int(cap.get(cv2.CAP_PROP_FPS))
         effective_frame_rate = original_frame_rate / skip_frames
-        out = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), effective_frame_rate, (frame_width, frame_height), isColor=False)
+        out = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), effective_frame_rate,
+                              (frame_width, frame_height), isColor=False)
+
+        # Initial progress update (assuming some pre-processing)
+        update_progress(5)
 
         frame_count = 0
-        pbar = tqdm(total=total_frames, desc="Processing Video")
+        # Adjust total progress based on processing steps (excluding pre-processing)
+        total_processing_steps = total_frames // skip_frames
+        pbar = tqdm(total=total_processing_steps, desc="Processing Video")
 
         while True:
             ret, next_frame = cap.read()
             if not ret:
                 break
             next_frame = self.load_and_prepare_frame(next_frame)
+
             if frame_count % skip_frames == 0:
+                # Calculate progress based on processed frames (excluding skipped frames)
+                processed_frames = frame_count // skip_frames
+                progress = 5 + (processed_frames / total_processing_steps) * 90  # Adjust weights as needed
+                update_progress(progress)
+
                 magnitude = self.calculate_optic_flow(prev_frame, next_frame)
                 saliency_map = self.segment_and_combine_saliency(next_frame, magnitude, type)
                 self.save_saliency_map(saliency_map, out)
             prev_frame = next_frame
             frame_count += 1
-            pbar.update(1)
+            pbar.update(1)  # tqdm internal counter (not affecting update_progress)
 
         pbar.close()
         cap.release()

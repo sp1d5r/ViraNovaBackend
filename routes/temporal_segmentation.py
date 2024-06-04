@@ -1,15 +1,13 @@
 import ast
 import uuid
-
+import random
 from flask import Blueprint
 from services.firebase import FirebaseService
 from services.langchain_chains.crop_segment import requires_cropping_chain, delete_operation_chain
 from services.saliency_detection.segmentation_optic_flow_saliency_detection import OpticFlowSegmentedSaliencyDetector
-from services.saliency_detection.segmentation_saliency_detector import SegmentedSaliencyDetector
 from services.verify_video_document import parse_and_verify_short, parse_and_verify_video, parse_and_verify_segment
 from datetime import datetime
 from pydub import AudioSegment
-import numpy as np
 from io import BytesIO
 import tempfile
 import os
@@ -196,52 +194,64 @@ def handle_operations_from_logs(logs, words):
 def generate_test_audio(short_id):
     firebase_service = FirebaseService()
     short_document = firebase_service.get_document("shorts", short_id)
+    update_progress = lambda x: firebase_service.update_document("shorts", short_id, {"update_progress": x})
+    update_message = lambda x: firebase_service.update_document("shorts", short_id, {"progress_message": x, "last_updated": datetime.now()})
+
     is_valid_document, error_message = parse_and_verify_short(short_document)
     if is_valid_document:
         firebase_service.update_document('shorts', short_id, {'temp_audio_file': "Loading..."})
-        print("Collected Document")
+        firebase_service.update_document("shorts", short_id, {"pending_operation": True})
+
+        update_message("Collected Short Document")
         logs = short_document['logs']
+        update_progress(20)
 
         if "video_id" in short_document.keys():
             video_id = short_document['video_id']
         else:
+            firebase_service.update_document("shorts", short_id, {"pending_operation": False})
             return "Failed - no video id in the short...", 300
 
         video_document = firebase_service.get_document('videos', video_id)
-
         is_valid_document, error_message = parse_and_verify_video(video_document)
 
+        update_progress(40)
         if not is_valid_document:
+            update_message("Not related to an original video... Contact someone...")
+            firebase_service.update_document("shorts", short_id, {"pending_operation": False})
             return error_message, 404
         else:
-            print("Collected video document")
+            update_message("Collected video document")
 
         audio_file = video_document['audio_path']
 
         segment_document = firebase_service.get_document('topical_segments', short_document['segment_id'])
-
         is_valid_document, error_message = parse_and_verify_segment(segment_document)
 
         if not is_valid_document:
+            update_message("Not related to an segment... Contact someone...")
+            firebase_service.update_document("shorts", short_id, {"pending_operation": False})
             return error_message, 404
         else:
-            print("Collected segmnet document")
+            update_message("Collected segmnet document")
 
         segment_document_words = ast.literal_eval(segment_document['words'])
-        print("Read Segment Words")
+        update_message("Read Segment Words")
         words_to_handle = handle_operations_from_logs(logs, segment_document_words)
         words_to_handle = [
             {**word, 'end_time': min(word['end_time'], words_to_handle[i + 1]['start_time'])}
             if i + 1 < len(words_to_handle) else word
             for i, word in enumerate(words_to_handle)
         ]
-        print("Download Audio File to Memory")
+        update_progress(60)
+        update_message("Download Audio File to Memory")
         audio_stream = firebase_service.download_file_to_memory(audio_file)
-        print("Create temporary audio file")
+        update_message("Create temporary audio file")
         audio_data = AudioSegment.from_file_using_temporary_files(audio_stream)
 
         combined_audio = AudioSegment.silent(duration=0)
         total_length = 0  # To keep track of expected length
+        progress = 60
 
         for word in words_to_handle:
             start_time = int(word['start_time'] * 1000)
@@ -250,28 +260,34 @@ def generate_test_audio(short_id):
             total_length += segment_length
             segment = audio_data[start_time:end_time]
             combined_audio += segment
-            print(f"Appended segment from {start_time} to {end_time}, segment length: {segment_length}, total expected length: {total_length}")
+            progress_update = random.uniform(progress - 0.02 * progress, progress + 0.02 * progress)
+            progress = min(progress_update, 98)
+            update_progress(progress)
+            update_message(f"Appended segment from {start_time} to {end_time}, segment length: {segment_length}, total expected length: {total_length}")
 
-        print("Final combined length (from segments):", total_length)
-        print("Actual combined audio length:", len(combined_audio))
+        update_message(str("Final combined length (from segments):" + str(total_length)))
+        update_message(str("Actual combined audio length:" + str(len(combined_audio))))
 
-        print("Loading the bytes stream")
+        update_message("Loading the bytes stream")
         byte_stream = BytesIO()
         combined_audio.export(byte_stream,
                              format='mp4')  # Use 'mp4' as the format; adjust as necessary for your audio type
 
-        print("New combined audio length:", len(combined_audio))
+        update_message(("New combined audio length:", str(len(combined_audio))))
 
         new_blob_location = 'temp-audio/' + "".join(audio_file.split("/")[1:])
 
         byte_stream.seek(0)
         file_bytes = byte_stream.read()
         firebase_service.upload_audio_file_from_memory(new_blob_location, file_bytes)
-        print("Uploaded Result")
+
+        update_message("Uploaded Result")
+        update_progress(100)
         firebase_service.update_document('shorts', short_id, {'temp_audio_file': new_blob_location})
-        return 200, new_blob_location
+        firebase_service.update_document("shorts", short_id, {"pending_operation": False})
+        return new_blob_location, 200
     else:
-        return 404, error_message
+        return error_message, 404
 
 
 def print_file_size(file_path):
@@ -286,6 +302,7 @@ def crop_video_to_segment(segment_id):
     print("Getting Documents")
     segment_document = firebase_service.get_document("topical_segments", segment_id)
     video_document = firebase_service.get_document('videos', segment_document['video_id'])
+
 
     firebase_service.update_document("topical_segments", segment_id, {'segment_status': "Getting Segment Video"})
 
@@ -345,75 +362,97 @@ def create_short_video(short_id):
     firebase_service = FirebaseService()
     video_clipper = VideoClipper()
 
-    print("Getting Documents")
     short_document = firebase_service.get_document("shorts", short_id)
     segment_id = short_document['segment_id']
     segment_document = firebase_service.get_document("topical_segments", segment_id)
+    update_progress = lambda x: firebase_service.update_document("shorts", short_id, {"update_progress": x})
+    update_message = lambda x: firebase_service.update_document("shorts", short_id, {"progress_message": x, "last_updated": datetime.now()})
 
-    print("Getting logs")
+    firebase_service.update_document("shorts", short_id, {"pending_operation": True})
+    update_message("Getting Documents")
+    update_message("Getting logs")
     # Check if the segment has a video segment location
     logs = short_document['logs']
+    update_progress(10)
 
-    print("Loading segment video to temporary location")
+    update_message("Loading segment video to temporary location")
     video_path = segment_document['video_segment_location']
     input_path = firebase_service.download_file_to_temp(video_path)
     video_duration = video_clipper.get_video_duration(input_path)
     print_file_size(input_path)
+    update_progress(10)
 
-    print("Loading Operations")
+    update_message("Loading Operations")
     segment_document_words = ast.literal_eval(segment_document['words'])
     start_time = segment_document_words[0]['start_time']
-    print("Read Segment Words")
+    update_message("Read Segment Words")
     words_to_handle = handle_operations_from_logs(logs, segment_document_words)
     words_to_handle = [
         {**word, 'end_time': min(word['end_time'], words_to_handle[i + 1]['start_time'])}
         if i + 1 < len(words_to_handle) else word
         for i, word in enumerate(words_to_handle)
     ]
-    print("Get clips start and end")
+    update_message("Get clips start and end")
+    update_progress(10)
 
     keep_cuts = [(round(i['start_time'] - start_time, 3), round(i['end_time'] - start_time,3)) for i in words_to_handle]
     merge_cuts = merge_consecutive_cuts(keep_cuts, video_duration)
+    update_progress(20)
 
     # 3) Clip the short according to locations
-    print("Creating temporary video segment")
+    update_message("Creating temporary video segment")
     _, output_path = tempfile.mkstemp(suffix='.mp4')  # Ensure it's an mp4 file
-    video_clipper.delete_segments_from_video(input_path, merge_cuts, output_path)
+    update_progress_time = lambda x: update_progress(30 + 50 * (x / 100))
+    video_clipper.delete_segments_from_video(input_path, merge_cuts, output_path, update_progress_time)
     print_file_size(output_path)
 
-    print("Uploading clipped video to short location")
+    update_message("Uploading clipped video to short location")
     destination_blob_name = "short-video/" + short_id + "-" + "".join(video_path.split("/")[1:])
     firebase_service.upload_file_from_temp(output_path, destination_blob_name)
+    update_progress(85)
 
-    print("Updating short document")
+    update_message("Updating short document")
     firebase_service.update_document("shorts", short_id, {"short_clipped_video": destination_blob_name})
+    update_progress(90)
 
-    print("Clean up...")
+    update_message("Clean up...")
+    update_progress(100)
+    firebase_service.update_document("shorts", short_id, {"pending_operation": False})
     os.remove(input_path)
+    return "Completed!"
 
 @temporal_segmentation.route("/get_saliency_for_short/<short_id>")
 def get_saliency_for_short(short_id):
     firebase_service = FirebaseService()
     saliency_service = OpticFlowSegmentedSaliencyDetector()
 
-    print("Getting Documents")
     short_document = firebase_service.get_document("shorts", short_id)
+    update_progress = lambda x: firebase_service.update_document("shorts", short_id, {"update_progress": x})
+    update_message = lambda x: firebase_service.update_document("shorts", short_id, {"progress_message": x, "last_updated": datetime.now()})
+    firebase_service.update_document("shorts", short_id, {"pending_operation": True})
 
     short_video_path = short_document['short_clipped_video']
 
     if short_video_path is None:
-        return 404, "No short video path found"
+        firebase_service.update_document("shorts", short_id, {"pending_operation": False})
+        return "No short video path found", 404
 
-    print("Loading video into temp locations")
+    update_message("Loading video into temp locations")
+    update_progress(20)
     temp_location = firebase_service.download_file_to_temp(short_video_path)
     _, output_path = tempfile.mkstemp(suffix='.mp4')
 
-    print("Calculating the saliency")
-    saliency_service.generate_video_saliency(temp_location, skip_frames=5, save_path=output_path)
+    update_message("Calculating the saliency")
+    update_progress_saliency = lambda x: update_progress(30 + 50 * (x / 100))
+    saliency_service.generate_video_saliency(temp_location, update_progress_saliency, skip_frames=5, save_path=output_path)
 
-    print("Uploading to firebase")
+    update_message("Uploading to firebase")
+    update_progress(90)
     destination_blob_name = "short-video-saliency/" + short_id + "-" + "".join(short_video_path.split("/")[1:])
     firebase_service.upload_file_from_temp(output_path, destination_blob_name)
 
-    print("Updating short document")
+    update_message("Updating short document")
+    firebase_service.update_document("shorts", short_id, {"pending_operation": False})
     firebase_service.update_document("shorts", short_id, {"short_video_saliency": destination_blob_name})
+
+    return "Completed Saliency Calculation"

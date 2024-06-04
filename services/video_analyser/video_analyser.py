@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 
 class VideoAnalyser():
-    def get_differences(self, video_path):
+    def get_differences(self, video_path, update_progress):
         # Load the video
         cap = cv2.VideoCapture(video_path)
 
@@ -11,15 +11,19 @@ class VideoAnalyser():
             print("Error: Could not open video.")
             exit()
             return None, None
-            # Get frame width and height
 
+        # Get frame width and height
         frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))  # Assuming available
         prev_frame = None
         fps = cap.get(cv2.CAP_PROP_FPS)
         differences = []  # List to store the difference values
         last_frames = 0  # Optional: store frames for manual review
+
+        # Initial progress update (assuming some pre-processing)
+        update_progress(5)
 
         while True:
             ret, frame = cap.read()
@@ -36,6 +40,10 @@ class VideoAnalyser():
                 _, thresh = cv2.threshold(diff, 50, 255, cv2.THRESH_BINARY)
                 change_intensity = np.sum(thresh)
                 differences.append(float(change_intensity))
+
+                # Calculate progress based on processed frames
+                progress = 5 + (last_frames / total_frames) * 90  # Adjust weights as needed
+                update_progress(progress)
 
             # Update the previous frame
             prev_frame = gray

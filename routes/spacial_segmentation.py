@@ -1,4 +1,6 @@
 import ast
+from datetime import datetime
+
 from routes.temporal_segmentation import generate_test_audio
 from services.bounding_box_services import smooth_bounding_boxes
 from services.verify_video_document import parse_and_verify_short
@@ -19,22 +21,35 @@ def determine_boundaries(short_id):
     firebase_services = FirebaseService()
     video_analyser = VideoAnalyser()
     short_doc = firebase_services.get_document("shorts", short_id)
+    update_progress = lambda x: firebase_services.update_document("shorts", short_id, {"update_progress": x})
+    update_message = lambda x: firebase_services.update_document("shorts", short_id,
+                                                                {"progress_message": x, "last_updated": datetime.now()})
+
+    update_message("Retrieved the document")
+    firebase_services.update_document("shorts", short_id, {"pending_operation": True})
+    update_progress(20)
     valid_short, error_message = parse_and_verify_short(short_doc)
 
     if not valid_short:
+        firebase_services.update_document("shorts", short_id, {"pending_operation": False})
         return 404, error_message
 
+    update_message("Downloading the clipped video")
+    update_progress(30)
     video_path = short_doc['short_clipped_video']
 
     if video_path is None:
+        firebase_services.update_document("shorts", short_id, {"pending_operation": False})
         return 403, "No video clipped yet..."
 
-    print("Getting temporary file")
+    update_progress(50)
+    update_message("Getting temporary file")
     temp_file = firebase_services.download_file_to_temp(video_path)
-
-    diff, last_frame, fps, height, width = video_analyser.get_differences(temp_file)
+    update_progress_diff = lambda x: update_progress(50 + 50 * (x/100))
+    update_message("Calculating frame difference")
+    diff, last_frame, fps, height, width = video_analyser.get_differences(temp_file, update_progress_diff)
     cuts = video_analyser.get_camera_cuts(diff)
-
+    update_message("Completed Download")
     firebase_services.update_document(
         "shorts",
         short_id,
@@ -48,6 +63,7 @@ def determine_boundaries(short_id):
         }
     )
 
+    firebase_services.update_document("shorts", short_id, {"pending_operation": False})
     return "Completed"
 
 
@@ -56,13 +72,22 @@ def get_bounding_boxes(short_id):
     firebase_services = FirebaseService()
     short_doc = firebase_services.get_document("shorts", short_id)
     bounding_box_generator = SlidingWindowBoundingBoxGenerator()
+    update_progress = lambda x: firebase_services.update_document("shorts", short_id, {"update_progress": x})
+    update_message = lambda x: firebase_services.update_document("shorts", short_id,
+                                                                 {"progress_message": x,
+                                                                  "last_updated": datetime.now()})
+
+    update_message("Retrieved the document")
+    firebase_services.update_document("shorts", short_id, {"pending_operation": True})
 
 
-    print("Checking short document is correct")
+    update_message("Checking short document is correct")
     if short_doc["short_video_saliency"] is None:
+        firebase_services.update_document("shorts", short_id, {"pending_operation": False})
         return 404, "Failed"
 
-    print("Loading Saliency Video")
+    update_message("Downloading Saliency Video...")
+    update_progress(20)
     short_video_saliency = firebase_services.download_file_to_temp(short_doc['short_video_saliency'])
 
     if 'cuts' not in short_doc.keys():
@@ -70,8 +95,10 @@ def get_bounding_boxes(short_id):
 
     short_doc = firebase_services.get_document("shorts", short_id)
     cuts = short_doc['cuts']
+    update_message("Processing video cuts...")
+    update_progress(30)
 
-    print("Adjusted Frames")
+    update_message("Adjusted Frames")
     skip_frames = 5
     fixed_cuts = [i//skip_frames for i in cuts]
     last_frame = short_doc['total_frame_count'] // skip_frames
@@ -80,14 +107,16 @@ def get_bounding_boxes(short_id):
 
     start_frame = 0
 
-    print("Calculating Bounding Boxes")
-    for end_frame in fixed_cuts:
+    update_message("Calculating Bounding Boxes")
+    update_temp_progress= lambda x, start, length: update_progress(start + (length * (x/100)))
+    for index, end_frame in enumerate(fixed_cuts):
         bounding_boxes = bounding_box_generator.generate_bounding_boxes(short_video_saliency, start_frame, end_frame)
         evaluate_bounding_box_success = bounding_box_generator.evaluate_saliency(short_video_saliency, bounding_boxes,
                                                                                  start_frame, end_frame)
         all_bounding_boxes.append(bounding_boxes)
         evaluated_saliency.append(evaluate_bounding_box_success)
         start_frame = end_frame + 1
+        update_temp_progress(100 * (index/len(fixed_cuts)), 30, 40)
 
     if fixed_cuts[-1] != last_frame:
         bounding_boxes = bounding_box_generator.generate_bounding_boxes(short_video_saliency, fixed_cuts[-1], last_frame)
@@ -96,10 +125,11 @@ def get_bounding_boxes(short_id):
                                                                                  last_frame)
         all_bounding_boxes.append(bounding_boxes)
         evaluated_saliency.append(evaluate_bounding_box_success)
+        update_progress(72)
 
     print(sum([len(i) for i in evaluated_saliency]))
 
-    print("Interpolating the missing positions within each segment")
+    update_message("Interpolating the missing positions within each segment")
     all_interpolated_boxes = []
     interpolated_saliency = []
 
@@ -128,11 +158,15 @@ def get_bounding_boxes(short_id):
         segment_bounding_boxes = smooth_bounding_boxes(segment_bounding_boxes, window_size=max(int(len(segment_bounding_boxes) / 5), 1))
         all_interpolated_boxes.extend(segment_bounding_boxes)
         interpolated_saliency.extend(segment_saliency_values)
+        update_temp_progress(100 * (segment_index / len(all_bounding_boxes)), 75, 20)
+
 
     integer_boxes = [list(i) for i in all_interpolated_boxes][:short_doc['total_frame_count'] + 1]
     saliency_vals = [float(i) for i in interpolated_saliency][:short_doc['total_frame_count'] + 1]
 
     print(len(integer_boxes), len(saliency_vals))
+    update_message(100)
+    firebase_services.update_document("shorts", short_id, {"pending_operation": False})
     firebase_services.update_document(
         "shorts",
         short_id,
@@ -239,28 +273,47 @@ def create_cropped_video(short_id):
     short_doc = firebase_service.get_document("shorts", short_id)
     text_service = AddTextToVideoService()
 
+    update_progress = lambda x: firebase_service.update_document("shorts", short_id, {"update_progress": x})
+    update_message = lambda x: firebase_service.update_document("shorts", short_id,
+                                                                 {"progress_message": x,
+                                                                  "last_updated": datetime.now()})
+    update_temp_progress = lambda x, start, length: update_progress(start + (length * (x / 100)))
+
+    update_message("Retrieved the document")
+    firebase_service.update_document("shorts", short_id, {"pending_operation": True})
+
+    update_progress(20)
     if not "short_clipped_video" in short_doc.keys():
-        print("Clipped video doesn't exist")
+        update_message("Clipped video doesn't exist")
+        firebase_service.update_document("shorts", short_id, {"pending_operation": False})
         return "Failed - No clipped video"
+    update_message("Accessed the short document")
 
     clipped_location = short_doc['short_clipped_video']
+    update_message("Download the clipped video")
     temp_clipped_file = firebase_service.download_file_to_temp(clipped_location)
+    update_progress(30)
 
     if not "bounding_boxes" in short_doc.keys():
-        print("Bounding boxes do not exist")
+        update_message("Bounding boxes do not exist")
+        firebase_service.update_document("shorts", short_id, {"pending_operation": False})
         return "Failed - No bounding boxes"
 
     bounding_boxes = json.loads(short_doc['bounding_boxes'])['boxes']
     _, output_path = tempfile.mkstemp(suffix='.mp4')
 
     cap = cv2.VideoCapture(temp_clipped_file)
+    update_message("Tried to open clipped video")
     if not cap.isOpened():
-        print("Error: Could not open video.")
+        update_message("Error: Could not open video.")
+        firebase_service.update_document("shorts", short_id, {"pending_operation": False})
         exit()
 
     # Get video properties
     fps = cap.get(cv2.CAP_PROP_FPS)
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Define the codec
+
+    update_message("Loading in bounding boxes")
 
     # Assuming all bounding boxes have the same size, we use the first one to set the output video size
     if bounding_boxes:
@@ -268,10 +321,12 @@ def create_cropped_video(short_id):
         # Create a video writer for the output video with the size of the bounding box
         out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
     else:
-        print("Error: Bounding box list is empty.")
+        update_message("Error: Bounding box list is empty.")
+        firebase_service.update_document("shorts", short_id, {"pending_operation": False})
         exit()
 
     frame_index = 0
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -286,6 +341,7 @@ def create_cropped_video(short_id):
             print(f"No bounding box for frame {frame_index}, skipping.")
 
         frame_index += 1
+        update_temp_progress((frame_index/total_frames) * 100 ,30,30)
 
     # Release everything when done
     cap.release()
@@ -296,12 +352,16 @@ def create_cropped_video(short_id):
     LOGO = "ViraNova"
 
     if 'short_title_top' in short_doc.keys():
+        update_message("Added top text")
+        update_progress(65)
         output_path = text_service.add_text_centered(output_path, short_doc['short_title_top'].upper(), 1,
                                                      thickness='Bold', color=(255, 255, 255), shadow_color=(0, 0, 0),
                                                      shadow_offset=(1, 1), outline=True, outline_color=(0, 0, 0),
                                                      outline_thickness=1, offset=(0, 0.2))
 
     if 'short_title_bottom' in short_doc.keys():
+        update_message("Added bottom text")
+        update_progress(70)
         output_path = text_service.add_text_centered(output_path, short_doc['short_title_bottom'].upper(), 1, thickness='Bold',
                                                  color=COLOUR, shadow_color=SHADOW_COLOUR,
                                                  shadow_offset=(1, 1), outline=False, outline_color=(0, 0, 0),
@@ -318,7 +378,8 @@ def create_cropped_video(short_id):
         segment_document = firebase_service.get_document('topical_segments', short_doc['segment_id'])
 
         segment_document_words = ast.literal_eval(segment_document['words'])
-        print("Read Segment Words")
+        update_message("Read Segment Words")
+        update_progress(75)
         logs = short_doc['logs']
         words_to_handle = handle_operations_from_logs(logs, segment_document_words)
         words_to_handle = [
@@ -342,7 +403,7 @@ def create_cropped_video(short_id):
         start_times = []
         end_times = []
 
-        for word in adjusted_words_to_handle:
+        for index, word in enumerate(adjusted_words_to_handle):
             word_text = word['word']
             start_time = word['start_time']
             end_time = word['end_time']
@@ -361,7 +422,10 @@ def create_cropped_video(short_id):
                 combined_text = word_text
                 current_start_time = start_time
                 current_end_time = end_time
+            update_message("Added words: " + str(combined_text))
+            update_temp_progress(index/len(adjusted_words_to_handle) * 100, 75, 15)
 
+        update_message("Adding transcript to video")
         # update start and end_times  relation to that new clipped video
         output_path = text_service.add_transcript(
             input_path=output_path,
@@ -379,9 +443,12 @@ def create_cropped_video(short_id):
             offset=(0, 0),
         )
 
+        update_message("Added transcript")
+        update_progress(95)
+
 
     generate_test_audio(short_id)
-
+    update_message("Adding audio now")
     firebase_service = FirebaseService()
     short_doc = firebase_service.get_document("shorts", short_id)
 
@@ -389,12 +456,14 @@ def create_cropped_video(short_id):
     output_path = add_audio_to_video(output_path, audio_path)
 
     # Create an output path
+    update_message("Added output path to short location")
     destination_blob_name = "finished-short/" + short_id + "-" + "".join(clipped_location.split("/")[1:])
     firebase_service.upload_file_from_temp(output_path, destination_blob_name)
 
     firebase_service.update_document("shorts", short_id, {"finished_short_location": destination_blob_name, "finished_short_fps": fps})
 
-    print("Finished Video!")
+    update_message("Finished Video!")
+    firebase_service.update_document("shorts", short_id, {"pending_operation": False})
     os.remove(temp_clipped_file)
 
     return "Done"
