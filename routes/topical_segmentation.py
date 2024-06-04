@@ -182,7 +182,7 @@ def create_segments(fixed_length_transcripts, boundaries, video_id, update_progr
 
 # Routes
 
-
+## DEPRECATED
 @topical_segmentation.route("/extract-topical-segments/<video_id>")
 def deal_with_topical_segments(video_id: str):
     print("Here")
