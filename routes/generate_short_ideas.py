@@ -3,7 +3,7 @@ import uuid
 from flask import Blueprint, jsonify
 from services.firebase import FirebaseService
 from services.langchain_chains.idea_generator_chain import idea_generator_chain
-from services.verify_video_document import parse_and_verify_video
+from services.verify_video_document import parse_and_verify_video, parse_and_verify_segment
 
 generate_short_ideas = Blueprint("generate_short_ideas", __name__)
 
@@ -44,6 +44,37 @@ def generate_short_ideas_from_segments(video_id: str):
                 )
 
         firebase_service.update_document('videos', video_id, {'status': "Clip Transcripts"})
+        return "Completed Segment Idea Extraction", 200
+    else:
+        return error_message, 404
+
+
+@generate_short_ideas.route("/generate-short-ideas-for-segment/<segment_id>")
+def generate_short_ideas_for_segments(segment_id: str):
+    firebase_service = FirebaseService()
+    topical_segments_document = firebase_service.get_document("topical_segments", segment_id)
+    is_valid_document, error_message = parse_and_verify_segment(topical_segments_document)
+
+    if is_valid_document:
+        if not topical_segments_document['flagged']:
+            tiktok_idea_uuid = uuid.uuid4()
+            tiktok_idea = idea_generator_chain.invoke(
+                {'transcript': topical_segments_document['transcript']},
+                config={"run_id": tiktok_idea_uuid,"metadata": {"segment_id": segment_id, "topical_segment_id": segment_id}})
+
+            if tiktok_idea.tiktok_idea == '':
+                return "Failed"
+
+            firebase_service.update_document(
+            'topical_segments',
+            segment_id,
+            {
+                'short_idea': tiktok_idea.tiktok_idea,
+                'short_idea_explanation': tiktok_idea.explanation,
+                'short_idea_run_id': str(tiktok_idea_uuid),
+                'segment_status': "TikTok Idea Generated"
+            })
+
         return "Completed Segment Idea Extraction", 200
     else:
         return error_message, 404

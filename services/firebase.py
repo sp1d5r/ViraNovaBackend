@@ -171,10 +171,10 @@ class FirebaseService:
         # Group by 'group_index' to handle multiple words belonging to the same transcript
         largest_group_index = max(list(transcribed_df['group_index']))
         grouped_df = transcribed_df.groupby('group_index')
-
+        index = 0
         # Iterate through each group produced by the groupby operation
         for group_index, group in grouped_df:
-            update_progress(group_index / len(grouped_df) * 100)
+            update_progress(index / len(grouped_df) * 100)
             transcript_id = f"{video_id}_{group_index}"
 
             transcript_data = {
@@ -203,9 +203,8 @@ class FirebaseService:
                 }
                 words_collection_ref.add(word_data)
                 words_list.append(word_data)
-
             transcripts_list.append(transcript_data)
-
+            index += 1
         return transcripts_list, words_list
 
     def query_transcripts_by_video_id(self, video_id):

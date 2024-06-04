@@ -318,15 +318,18 @@ def crop_video_to_segment(segment_id):
     os.remove(input_path)
     os.remove(output_path)
 
-def merge_consecutive_cuts(cuts):
+def merge_consecutive_cuts(cuts, max_duration):
     if not cuts:
         return []
 
-    # Start with the first cut
-    merged_cuts = [cuts[0]]
+    # Start with the first cut, but ensure it doesn't exceed the video duration
+    merged_cuts = [(cuts[0][0], min(cuts[0][1], max_duration))]
 
     for current_start, current_end in cuts[1:]:
         last_start, last_end = merged_cuts[-1]
+
+        # Cap the end time to the maximum duration of the video
+        current_end = min(current_end, max_duration)
 
         # If the current start time is the same as the last end time, merge them
         if current_start == last_end:
@@ -351,6 +354,12 @@ def create_short_video(short_id):
     # Check if the segment has a video segment location
     logs = short_document['logs']
 
+    print("Loading segment video to temporary location")
+    video_path = segment_document['video_segment_location']
+    input_path = firebase_service.download_file_to_temp(video_path)
+    video_duration = video_clipper.get_video_duration(input_path)
+    print_file_size(input_path)
+
     print("Loading Operations")
     segment_document_words = ast.literal_eval(segment_document['words'])
     start_time = segment_document_words[0]['start_time']
@@ -364,12 +373,7 @@ def create_short_video(short_id):
     print("Get clips start and end")
 
     keep_cuts = [(round(i['start_time'] - start_time, 3), round(i['end_time'] - start_time,3)) for i in words_to_handle]
-    merge_cuts = merge_consecutive_cuts(keep_cuts)
-
-    print("Loading segment video to temporary location")
-    video_path = segment_document['video_segment_location']
-    input_path = firebase_service.download_file_to_temp(video_path)
-    print_file_size(input_path)
+    merge_cuts = merge_consecutive_cuts(keep_cuts, video_duration)
 
     # 3) Clip the short according to locations
     print("Creating temporary video segment")

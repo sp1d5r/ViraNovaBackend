@@ -16,6 +16,11 @@ class VideoClipper:
         seconds = seconds % 60
         return f"{hours:02}:{minutes:02}:{seconds:06.3f}"
 
+    def get_video_duration(self, video_path):
+        # Open the video file with MoviePy and return its duration
+        with VideoFileClip(video_path) as video:
+            return video.duration
+
     def clip_video(self, input_path, start_time, end_time, output_path):
         # Format times as strings, e.g., '00:00:10'
         start_str = self.format_time(start_time)

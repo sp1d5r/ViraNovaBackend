@@ -73,6 +73,7 @@ def edit_segments(event, context):
 
         status_route_mapping = {
             "Crop Segment": "crop-segment",
+            "Regenerate Short": "generate-short-ideas-for-segment"
         }
 
         if new_status in status_route_mapping:

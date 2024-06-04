@@ -1,7 +1,4 @@
 import ast
-import os
-import subprocess
-
 from routes.temporal_segmentation import generate_test_audio
 from services.bounding_box_services import smooth_bounding_boxes
 from services.verify_video_document import parse_and_verify_short
@@ -35,7 +32,7 @@ def determine_boundaries(short_id):
     print("Getting temporary file")
     temp_file = firebase_services.download_file_to_temp(video_path)
 
-    diff, last_frame, fps = video_analyser.get_differences(temp_file)
+    diff, last_frame, fps, height, width = video_analyser.get_differences(temp_file)
     cuts = video_analyser.get_camera_cuts(diff)
 
     firebase_services.update_document(
@@ -45,7 +42,9 @@ def determine_boundaries(short_id):
             'cuts': cuts,
             "visual_difference": json.dumps({ "frame_differences": diff }),
             "total_frame_count": last_frame,
-            "fps": fps
+            "fps": fps,
+            "height": height,
+            "width": width,
         }
     )
 
@@ -169,11 +168,14 @@ def merge_consecutive_cuts(cuts):
     if not cuts:
         return []
 
-    # Start with the first cut
-    merged_cuts = [cuts[0]]
+    # Start with the first cut, but ensure it doesn't exceed the video duration
+    merged_cuts = [(cuts[0][0], cuts[0][1])]
 
     for current_start, current_end in cuts[1:]:
         last_start, last_end = merged_cuts[-1]
+
+        # Cap the end time to the maximum duration of the video
+        current_end = current_end
 
         # If the current start time is the same as the last end time, merge them
         if current_start == last_end:

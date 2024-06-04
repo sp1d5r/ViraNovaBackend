@@ -30,4 +30,4 @@ jobs:
           --entry-point preprocess_video_documents
       env:
         BACKEND_SERVICE_ADDRESS: ${{ secrets.BACKEND_SERVICE_ADDRESS }}
-      working-directory: ./google-functions/preprocess-functions
+      working-directory: ./google-functions/videos-listener

@@ -11,6 +11,10 @@ class VideoAnalyser():
             print("Error: Could not open video.")
             exit()
             return None, None
+            # Get frame width and height
+
+        frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
         prev_frame = None
         fps = cap.get(cv2.CAP_PROP_FPS)
@@ -38,7 +42,7 @@ class VideoAnalyser():
 
         cap.release()
 
-        return differences, last_frames, fps
+        return differences, last_frames, fps, frame_height, frame_width
 
     def get_camera_cuts(self, differences):
         mean_difference = np.mean(differences)
