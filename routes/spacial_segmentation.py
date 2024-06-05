@@ -1,10 +1,10 @@
 import ast
 from datetime import datetime
-
 from routes.temporal_segmentation import generate_test_audio
 from services.bounding_box_services import smooth_bounding_boxes
 from services.verify_video_document import parse_and_verify_short
 from services.add_text_to_video_service import AddTextToVideoService
+from services.video_audio_merger import VideoAudioMerger
 from services.firebase import FirebaseService
 import cv2
 import tempfile
@@ -272,6 +272,7 @@ def create_cropped_video(short_id):
     firebase_service = FirebaseService()
     short_doc = firebase_service.get_document("shorts", short_id)
     text_service = AddTextToVideoService()
+    video_audio_merger = VideoAudioMerger()
 
     update_progress = lambda x: firebase_service.update_document("shorts", short_id, {"update_progress": x})
     update_message = lambda x: firebase_service.update_document("shorts", short_id,
@@ -454,6 +455,12 @@ def create_cropped_video(short_id):
 
     audio_path = firebase_service.download_file_to_temp(short_doc['temp_audio_file'], short_doc['temp_audio_file'].split(".")[-1])
     output_path = add_audio_to_video(output_path, audio_path)
+
+    if "background_audio" in short_doc.keys():
+        background_audio = firebase_service.get_document("stock-audio", short_doc['background_audio'])
+        temp_audio_location = firebase_service.download_file_to_temp(background_audio['storageLocation'])
+        output_path = video_audio_merger.merge_audio_to_video(output_path, temp_audio_location,
+                                                              short_doc['background_percentage'])
 
     # Create an output path
     update_message("Added output path to short location")
