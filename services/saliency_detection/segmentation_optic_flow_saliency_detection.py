@@ -141,7 +141,7 @@ class OpticFlowSegmentedSaliencyDetector(VideoSaliencyDetector):
 
         # Process frames in parallel
         processed_chunks = Parallel(n_jobs=num_chunks)(delayed(self.process_frame_chunk)(
-            chunk, skip_frames, type, progress, total_frames, num_chunks) for chunk in frame_chunks)
+            chunk, skip_frames, type, progress, total_frames//skip_frames, num_chunks) for chunk in frame_chunks)
 
         out = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), effective_frame_rate, (frame_width, frame_height), isColor=False)
 
