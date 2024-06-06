@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flask-app-config
+  namespace: viranova
+data:
+  FLASK_APP: app.py
+  FIREBASE_STORAGE_BUCKET: your-firebase-bucket
+  POSTGRES_USER: your-postgres-user
+  POSTGRES_HOST: your-postgres-host
+  POSTGRES_PORT: "your-postgres-port"
+  POSTGRES_DATABASE: your-postgres-database
+  POSTGRES_SSLMODE: your-postgres-sslmode
+  QDRANT_LOCATION: your-qdrant-location
+  LANGCHAIN_TRACING_V2: your-langchain-tracing-v2
+  LANGCHAIN_PROJECT: your-langchain-project

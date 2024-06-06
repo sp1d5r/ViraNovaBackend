@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: viranova
+  namespace: viranova
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: viranova
+  template:
+    metadata:
+      labels:
+        app: viranova
+    spec:
+      containers:
+      - name: viranova
+        image: registry.digitalocean.com/viranova-container/viranovabackend:latest
+        ports:
+        - containerPort: 5000
+        envFrom:
+        - configMapRef:
+            name: flask-app-config
+        - secretRef:
+            name: flask-app-secrets
+        resources:
+          requests:
+            cpu: "2"  # Request 2 CPU cores
+            memory: "2Gi"  # Request 2 GiB of memory
+          limits:
+            cpu: "4"  # Allow up to 4 CPU cores
+            memory: "4Gi"  # Allow up to 4 GiB of memory
