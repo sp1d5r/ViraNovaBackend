@@ -444,7 +444,7 @@ def get_saliency_for_short(short_id):
 
     update_message("Calculating the saliency")
     update_progress_saliency = lambda x: update_progress(30 + 50 * (x / 100))
-    saliency_service.generate_video_saliency(temp_location, update_progress_saliency, skip_frames=5, save_path=output_path)
+    saliency_service.generate_video_saliency(temp_location, update_progress_saliency, short_id=short_id, skip_frames=5, save_path=output_path)
 
     update_message("Uploading to firebase")
     update_progress(90)
