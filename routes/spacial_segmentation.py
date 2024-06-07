@@ -355,20 +355,20 @@ def create_cropped_video(short_id):
     if 'short_title_top' in short_doc.keys():
         update_message("Added top text")
         update_progress(65)
-        output_path = text_service.add_text_centered(output_path, short_doc['short_title_top'].upper(), 1,
+        output_path = text_service.add_text_centered(output_path, short_doc['short_title_top'].upper(), 1.7,
                                                      thickness='Bold', color=(255, 255, 255), shadow_color=(0, 0, 0),
                                                      shadow_offset=(1, 1), outline=True, outline_color=(0, 0, 0),
-                                                     outline_thickness=1, offset=(0, 0.2))
+                                                     outline_thickness=1, offset=(0, 0.15))
 
     if 'short_title_bottom' in short_doc.keys():
         update_message("Added bottom text")
         update_progress(70)
-        output_path = text_service.add_text_centered(output_path, short_doc['short_title_bottom'].upper(), 1, thickness='Bold',
+        output_path = text_service.add_text_centered(output_path, short_doc['short_title_bottom'].upper(), 1.7, thickness='Bold',
                                                  color=COLOUR, shadow_color=SHADOW_COLOUR,
                                                  shadow_offset=(1, 1), outline=False, outline_color=(0, 0, 0),
-                                                 outline_thickness=1, offset=(0, 0.23))
+                                                 outline_thickness=1, offset=(0, 0.18))
 
-    output_path = text_service.add_text_centered(output_path, LOGO, 0.8,
+    output_path = text_service.add_text_centered(output_path, LOGO, 1,
                                                  thickness='Bold',
                                                  color=COLOUR, shadow_color=(0,0,0),
                                                  shadow_offset=(1, 1), outline=False, outline_color=(0, 0, 0),
@@ -433,7 +433,7 @@ def create_cropped_video(short_id):
             texts=[i.upper() for i in texts],
             start_times=start_times,
             end_times=end_times,
-            font_scale=1,
+            font_scale=1.3,
             thickness='Bold',
             color=(255, 255, 255),
             shadow_color=(0, 0, 0),

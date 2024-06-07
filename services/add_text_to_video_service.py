@@ -5,6 +5,38 @@ from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 
 class AddTextToVideoService:
+    def resize_video(self, input_path, output_path, target_width, target_height):
+        cap = cv2.VideoCapture(input_path)
+        if not cap.isOpened():
+            print("Error: Could not open video.")
+            return None
+
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+        # Calculate the aspect ratio and determine the new dimensions
+        aspect_ratio = width / height
+        if width > height:
+            new_width = target_width
+            new_height = int(target_width / aspect_ratio)
+        else:
+            new_height = target_height
+            new_width = int(target_height * aspect_ratio)
+
+        out = cv2.VideoWriter(output_path, fourcc, fps, (new_width, new_height))
+
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            resized_frame = cv2.resize(frame, (new_width, new_height))
+            out.write(resized_frame)
+
+        cap.release()
+        out.release()
+
     def add_text_centered(self, input_path, text, font_scale, position=None, color=(255, 255, 255), thickness='Bold', shadow_offset=(2,2), shadow_color=(0,0,0), outline=False, outline_color=(0, 0, 0), outline_thickness=2, offset=None, start_seconds=None, end_seconds=None):
         return self.add_text(input_path, text, font_scale, position, color, thickness, start_seconds, end_seconds, shadow_offset, shadow_color, outline, outline_color, outline_thickness, offset)
 
@@ -19,6 +51,18 @@ class AddTextToVideoService:
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
+        # Temporary resized video path
+        _, resized_video_path = tempfile.mkstemp(suffix='.mp4')
+        self.resize_video(input_path, resized_video_path, 720, 1280)  # Resize to 720x1280
+
+        # Open the resized video
+        cap = cv2.VideoCapture(resized_video_path)
+        if not cap.isOpened():
+            print("Error: Could not open resized video.")
+            return None
+
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         _, temp_output_path = tempfile.mkstemp(suffix='.mp4')  # Create a temporary file
         out = cv2.VideoWriter(temp_output_path, fourcc, fps, (width, height))
         current_frame = 0
@@ -111,7 +155,8 @@ class AddTextToVideoService:
         cap.release()
         out.release()
 
-        os.remove(input_path)
+        os.remove(resized_video_path)  # Remove the temporary resized video
+        os.remove(input_path)  # Remove the original input video
         print("Text added to video, original file updated!")
         return temp_output_path  # Return the path of the updated file
 
@@ -128,6 +173,18 @@ class AddTextToVideoService:
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
+        # Temporary resized video path
+        _, resized_video_path = tempfile.mkstemp(suffix='.mp4')
+        self.resize_video(input_path, resized_video_path, 720, 1280)  # Resize to 1280x720
+
+        # Open the resized video
+        cap = cv2.VideoCapture(resized_video_path)
+        if not cap.isOpened():
+            print("Error: Could not open resized video.")
+            return None
+
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         _, temp_output_path = tempfile.mkstemp(suffix='.mp4')  # Create a temporary file
         out = cv2.VideoWriter(temp_output_path, fourcc, fps, (width, height))
         current_frame = 0
@@ -206,10 +263,7 @@ class AddTextToVideoService:
         cap.release()
         out.release()
 
-        os.remove(input_path)
-        print("Text added to video, original file updated!")
+        os.remove(resized_video_path)  # Remove the temporary resized video
+        os.remove(input_path)  # Remove the original input video
+        print("Transcript added to video, original file updated!")
         return temp_output_path  # Return the path of the updated file
-
-# Example usage:
-# service = AddTextToVideoService()
-# service.add_text_centered('input.mp4', 'Sample Text', 1, position=None, color=(255, 255, 255), thickness='Bold', shadow_offset=(2,2), shadow_color=(0,0,0), outline=True, outline_color=(0, 0, 0), outline_thickness=2, offset=(-0.25, -0.25), start_seconds=0, end_seconds=10)
