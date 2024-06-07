@@ -16,6 +16,7 @@ spec:
       containers:
       - name: viranova
         image: registry.digitalocean.com/viranova-container/viranovabackend:latest
+        imagePullPolicy: Always  # Ensures the latest image is pulled
         ports:
         - containerPort: 5000
         envFrom:
