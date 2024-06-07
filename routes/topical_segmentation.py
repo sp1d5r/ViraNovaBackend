@@ -182,38 +182,6 @@ def create_segments(fixed_length_transcripts, boundaries, video_id, update_progr
 
 # Routes
 
-## DEPRECATED
-@topical_segmentation.route("/extract-topical-segments/<video_id>")
-def deal_with_topical_segments(video_id: str):
-    print("Here")
-    firebase_service = FirebaseService()
-    open_ai_service = OpenAIService()
-    video_document = firebase_service.get_document("videos", video_id)
-    is_valid_document, error_message = parse_and_verify_video(video_document)
-    update_progress_message = lambda x: firebase_service.update_document('videos', video_id,
-                                                                         {'progressMessage': x})
-    update_progress = lambda x: firebase_service.update_document('videos', video_id,
-                                                                 {'processingProgress': x})
-
-    if is_valid_document:
-        transcripts = firebase_service.query_transcripts_by_video_id_with_words(video_id)
-        custom_transcript = create_fixed_length_transcripts(transcripts, n=10)
-        embeddings = open_ai_service.get_embeddings(custom_transcript, update_progress)
-        boundaries = get_transcript_topic_boundaries(embeddings, update_progress, update_progress_message)
-        print(boundaries)
-        segments = create_segments(custom_transcript, boundaries, video_id, update_progress, update_progress_message)
-        update_progress_message("Uploading segments to database")
-        for index, segment in enumerate(segments):
-            update_progress((index + 1) / len(segments) * 100)
-            firebase_service.add_document("topical_segments", segment)
-
-        update_progress_message("Finished Segmenting Video!")
-        firebase_service.update_document('videos', video_id, {'status': "Summarizing Segments"})
-        return segments, 200
-    else:
-        return error_message, 404
-
-
 def reformat_transcripts(transcripts):
     # Sort the transcripts based on the 'index' key
     sorted_transcripts = sorted(transcripts, key=lambda x: x['index'])

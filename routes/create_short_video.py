@@ -4,15 +4,13 @@ from services.firebase import FirebaseService
 from datetime import datetime
 import tempfile
 import os
+
+from services.handle_operations_from_logs import handle_operations_from_logs
 from services.video_clipper import VideoClipper
 
 
 # Routes
-temporal_segmentation = Blueprint("temporal_segmentation", __name__)
-
-
-
-
+create_short_video = Blueprint("create_short_video", __name__)
 
 def merge_consecutive_cuts(cuts, max_duration):
     if not cuts:
@@ -35,9 +33,12 @@ def merge_consecutive_cuts(cuts, max_duration):
 
     return merged_cuts
 
+def print_file_size(file_path):
+    size = os.path.getsize(file_path)
+    print(f"File size of {file_path} is {size} bytes.")
 
-@temporal_segmentation.route("/create-short-video/<short_id>")
-def create_short_video(short_id):
+@create_short_video.route("/create-short-video/<short_id>")
+def generate_short_video(short_id):
     firebase_service = FirebaseService()
     video_clipper = VideoClipper()
 

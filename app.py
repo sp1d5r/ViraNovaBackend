@@ -1,18 +1,22 @@
 from routes.generate_short_ideas import generate_short_ideas
-from routes.get_random_video import get_random_video
-from routes.get_segmentation_masks import get_segmentation_mask
-from routes.get_shorts_and_segments import get_shorts_and_segments
+from routes.deprecated.get_random_video import get_random_video
+from routes.deprecated.get_segmentation_masks import get_segmentation_mask
+from routes.deprecated.get_shorts_and_segments import get_shorts_and_segments
 from routes.spacial_segmentation import spacial_segmentation
 from routes.summarise_segments import summarise_segments
-from routes.temporal_segmentation import temporal_segmentation
+from routes.create_short_video import create_short_video
 from routes.transcribe_and_diarize_audio import transcribe_and_diarize_audio
 from routes.split_video_and_audio import split_video_and_audio
+from routes.edit_transcript import edit_transcript
 from routes.topical_segmentation import topical_segmentation
+from routes.get_saliency_for_short import short_saliency
+from routes.generate_test_audio import generate_test_audio
+from routes.extract_segment_from_video import extract_segment_from_video
 from flask_cors import CORS
-from flask import Flask
+from flask import Flask, request, jsonify, g
 import flask_monitoringdashboard as dashboard
-
 from routes.youtube_link import youtube_link
+from services.firebase import FirebaseService
 
 app = Flask(__name__)
 dashboard.bind(app)
@@ -39,9 +43,94 @@ app.register_blueprint(get_random_video)
 app.register_blueprint(get_segmentation_mask)
 app.register_blueprint(get_shorts_and_segments)
 app.register_blueprint(generate_short_ideas)
-app.register_blueprint(temporal_segmentation)
+app.register_blueprint(create_short_video)
 app.register_blueprint(spacial_segmentation)
 app.register_blueprint(youtube_link)
+app.register_blueprint(edit_transcript)
+app.register_blueprint(short_saliency)
+app.register_blueprint(generate_test_audio)
+app.register_blueprint(extract_segment_from_video)
+
+
+# App Before/After Hooks
+SERVER_STATUS_COLUMN_NAME = "backend_status"
+SERVER_STATUS_PENDING = "Pending"
+SERVER_STATUS_COMPLETE = "Completed"
+SERVER_STATUS_PROCESSING = "Processing"
+
+@app.before_request
+def check_status():
+    video_id = None
+    short_id = None
+    segment_id = None
+
+    print(request)
+    print(request.view_args)
+
+    # Get video / segment / short
+    if request.view_args:
+        video_id = request.view_args.get('video_id')
+        short_id = request.view_args.get('short_id')
+        segment_id = request.view_args.get("segment_id")
+    firebase_service = FirebaseService()
+
+    # For Video Endpoints
+    if video_id:
+        video_document = firebase_service.get_document("videos", video_id)
+        status = video_document.get(SERVER_STATUS_COLUMN_NAME, SERVER_STATUS_PENDING)
+        if status == SERVER_STATUS_PROCESSING:
+            return jsonify({'message': f'Task already {status.lower()}. Please wait or check the result.'}), 400
+        else:
+            # Set the status to 'Processing' and save it in the request context
+            firebase_service.update_document('videos', video_id, {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_PROCESSING})
+            g.video_document = video_document
+
+    # For Segment Endpoints
+    if segment_id:
+        segment_document = firebase_service.get_document("topical_segments", segment_id)
+        status = segment_document.get(SERVER_STATUS_COLUMN_NAME, SERVER_STATUS_PENDING)
+        if status == SERVER_STATUS_PROCESSING:
+            return jsonify({'message': f'Task already {status.lower()}. Please wait or check the result.'}), 400
+        else:
+            # Set the status to 'Processing' and save it in the request context
+            firebase_service.update_document('topical_segments', segment_id, {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_PROCESSING})
+            g.segment_document = segment_document
+
+    # For Short Endpoints
+    if short_id:
+        short_document = firebase_service.get_document("shorts", short_id)
+        status = short_document.get(SERVER_STATUS_COLUMN_NAME, SERVER_STATUS_PENDING)
+        print("Status:", status)
+        if status == SERVER_STATUS_PROCESSING:
+            return jsonify({'message': f'Task already {status.lower()}. Please wait or check the result.'}), 400
+        else:
+            # Set the status to 'Processing' and save it in the request context
+            firebase_service.update_document('shorts', short_id, {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_PROCESSING})
+            g.short_document = short_document
+
+
+@app.after_request
+def update_status(response):
+    if request.view_args is None:
+        return response
+
+    # Get video / segment / short
+    video_id = request.view_args.get('video_id')
+    short_id = request.view_args.get('short_id')
+    segment_id = request.view_args.get("segment_id")
+
+    firebase_service = FirebaseService()
+    if response.status_code == 200:
+        if video_id:
+            firebase_service.update_document("videos", video_id, {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE})
+        if segment_id:
+            firebase_service.update_document("topical_segments", segment_id,
+                                             {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE})
+        if short_id:
+            firebase_service.update_document("shorts", short_id,
+                                             {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE})
+
+    return response
 
 
 @app.route("/")

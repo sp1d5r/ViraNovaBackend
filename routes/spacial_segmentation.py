@@ -1,6 +1,6 @@
 import ast
 from datetime import datetime
-from routes.temporal_segmentation import generate_test_audio
+from routes.generate_test_audio import generate_test_audio_for_short
 from services.bounding_box_services import smooth_bounding_boxes
 from services.verify_video_document import parse_and_verify_short
 from services.add_text_to_video_service import AddTextToVideoService
@@ -447,8 +447,8 @@ def create_cropped_video(short_id):
         update_message("Added transcript")
         update_progress(95)
 
-
-    generate_test_audio(short_id)
+    update_message("Creating Updated short audio file")
+    generate_test_audio_for_short(short_id)
     update_message("Adding audio now")
     firebase_service = FirebaseService()
     short_doc = firebase_service.get_document("shorts", short_id)
