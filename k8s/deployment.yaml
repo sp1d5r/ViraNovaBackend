@@ -27,7 +27,7 @@ spec:
         resources:
           requests:
             cpu: "2"  # Request 2 CPU cores
-            memory: "2Gi"  # Request 2 GiB of memory
+            memory: "4Gi"  # Request 2 GiB of memory
           limits:
             cpu: "4"  # Allow up to 4 CPU cores
-            memory: "4Gi"  # Allow up to 4 GiB of memory
+            memory: "8Gi"  # Allow up to 4 GiB of memory
