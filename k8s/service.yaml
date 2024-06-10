@@ -3,6 +3,9 @@ kind: Service
 metadata:
   name: flask-service
   namespace: viranova
+  annotations:
+    service.beta.kubernetes.io/do-loadbalancer-protocol: "http"
+    service.beta.kubernetes.io/do-loadbalancer-connection-idle-timeout: "600"
 spec:
   selector:
     app: viranova

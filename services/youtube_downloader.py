@@ -1,9 +1,12 @@
 from pytube import YouTube
 import pandas as pd
 import subprocess
+from pytube.innertube import _default_clients
+
 
 def download_video(video_id, url, update_progress, update_progress_message):
     yt = YouTube(url)
+    _default_clients["ANDROID_MUSIC"] = _default_clients["WEB"]
     update_progress(20)
     update_progress_message("Beginning Download - Highest resolution, you're welcome")
     video = yt.streams.get_highest_resolution()
