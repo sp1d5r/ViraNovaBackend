@@ -14,12 +14,12 @@ from routes.generate_test_audio import generate_test_audio
 from routes.extract_segment_from_video import extract_segment_from_video
 from flask_cors import CORS
 from flask import Flask, request, jsonify, g
-import flask_monitoringdashboard as dashboard
+from prometheus_flask_exporter import PrometheusMetrics
 from routes.youtube_link import youtube_link
 from services.firebase import FirebaseService
 
 app = Flask(__name__)
-dashboard.bind(app)
+PrometheusMetrics(app)
 
 origins = [
     "http://localhost:3000/segmentation",

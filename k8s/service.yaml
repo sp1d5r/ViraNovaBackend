@@ -5,7 +5,7 @@ metadata:
   namespace: viranova
   annotations:
     service.beta.kubernetes.io/do-loadbalancer-protocol: "http"
-    service.beta.kubernetes.io/do-loadbalancer-connection-idle-timeout: "600"
+    service.beta.kubernetes.io/do-loadbalancer-connection-idle-timeout: "1800"  # 30 minutes
 spec:
   selector:
     app: viranova

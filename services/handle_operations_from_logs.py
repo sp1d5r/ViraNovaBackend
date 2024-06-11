@@ -7,10 +7,12 @@ def handle_operations_from_logs(logs, words):
     for log in logs:
         if log['type'] == "delete":
             for i in range(log['start_index'], log['end_index'] + 1):
-                words[i]['position'] = 'delete'
+                if i < len(words):
+                    words[i]['position'] = 'delete'
         elif log['type'] == "undelete":
             for i in range(log['start_index'], log['end_index'] + 1):
-                words[i]['position'] = 'keep'  # Restore to 'keep' if undeleted
+                if i < len(words):
+                    words[i]['position'] = 'keep'  # Restore to 'keep' if undeleted
 
     # Collect words to output that are not deleted
     output_words = [word for word in words if word['position'] == 'keep']
