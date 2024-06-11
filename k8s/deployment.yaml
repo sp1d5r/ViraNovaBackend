@@ -26,8 +26,8 @@ spec:
             name: flask-app-secrets
         resources:
           requests:
-            cpu: "2"  # Request 2 CPU cores
-            memory: "4Gi"  # Request 2 GiB of memory
+            cpu: "4"  # Request 4 CPU cores
+            memory: "8Gi"  # Request 8 GiB of memory
           limits:
-            cpu: "4"  # Allow up to 4 CPU cores
-            memory: "8Gi"  # Allow up to 4 GiB of memory
+            cpu: "6"  # Allow up to 6 CPU cores
+            memory: "12Gi"  # Allow up to 12 GiB of memory

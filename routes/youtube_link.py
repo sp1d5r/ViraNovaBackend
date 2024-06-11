@@ -6,7 +6,7 @@ from services.youtube_downloader import download_video
 youtube_link = Blueprint("youtube_link", __name__)
 
 
-@youtube_link.route("/begin-youtube-link-download/<yt_video_id>")
+@youtube_link.route("/begin-youtube-link-download/<video_id>")
 def begin_youtube_link_download(video_id: str):
     firebase_service = FirebaseService()
     video_document = firebase_service.get_document("videos", video_id)
