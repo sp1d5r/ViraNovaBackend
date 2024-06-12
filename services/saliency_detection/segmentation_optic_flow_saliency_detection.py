@@ -23,15 +23,20 @@ def monitor_progress(progress, short_id):
     from services.firebase import FirebaseService  # Import inside the function to avoid pickling issues
     firebase_service = FirebaseService()
     last_progress = 0
-    while True:
-        current_progress = progress.value
-        if current_progress >= 100 or last_progress >= 100:
-            break
-        if current_progress != last_progress:
-            update_progress(firebase_service, short_id, current_progress)
-            last_progress = current_progress
-        time.sleep(0.5)
-    update_progress(firebase_service, short_id, 100)
+    try:
+        while True:
+            current_progress = progress.value
+            if current_progress >= 100 or last_progress >= 100:
+                break
+            if current_progress != last_progress:
+                update_progress(firebase_service, short_id, current_progress)
+                last_progress = current_progress
+            time.sleep(0.5)
+    except (BrokenPipeError, EOFError) as e:
+        print(f"Error in monitor_progress: {e}")
+    finally:
+        update_progress(firebase_service, short_id, 100)
+        print("Monitor process terminating")
 
 
 class OpticFlowSegmentedSaliencyDetector(VideoSaliencyDetector):
@@ -113,7 +118,8 @@ class OpticFlowSegmentedSaliencyDetector(VideoSaliencyDetector):
             prev_frame = next_frame
         return processed_results
 
-    def generate_video_saliency(self, video_path, update_progress, short_id="", skip_frames=5, save_path='saliency_video.mp4', type="max"):
+    def generate_video_saliency(self, video_path, update_progress, short_id="", skip_frames=5,
+                                save_path='saliency_video.mp4', type="max"):
         cap = cv2.VideoCapture(video_path)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         frame_width, frame_height = int(cap.get(3)), int(cap.get(4))
@@ -135,24 +141,28 @@ class OpticFlowSegmentedSaliencyDetector(VideoSaliencyDetector):
         manager = Manager()
         progress = manager.Value('d', 0.0)
 
-        progress_monitor = Process(target=monitor_progress,
-                                   args=(progress, short_id))
+        progress_monitor = Process(target=monitor_progress, args=(progress, short_id))
         progress_monitor.start()
 
-        # Process frames in parallel
-        processed_chunks = Parallel(n_jobs=num_chunks)(delayed(self.process_frame_chunk)(
-            chunk, skip_frames, type, progress, total_frames//skip_frames, num_chunks) for chunk in frame_chunks)
+        try:
+            processed_chunks = Parallel(n_jobs=num_chunks)(delayed(self.process_frame_chunk)(
+                chunk, skip_frames, type, progress, total_frames // skip_frames, num_chunks) for chunk in frame_chunks)
 
-        out = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), effective_frame_rate, (frame_width, frame_height), isColor=False)
+            out = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), effective_frame_rate,
+                                  (frame_width, frame_height), isColor=False)
 
-        # Flatten the list of processed frames
-        processed_frames = [frame for chunk in processed_chunks for frame in chunk]
+            processed_frames = [frame for chunk in processed_chunks for frame in chunk]
 
-        # Write processed frames to the output video
-        for frame in processed_frames:
-            self.save_saliency_map(frame, out)
-            update_progress(progress.value)  # Update the progress
+            for frame in processed_frames:
+                self.save_saliency_map(frame, out)
+                update_progress(progress.value)
 
-        out.release()
+            out.release()
+        finally:
+            # Ensure the monitor process terminates properly
+            if progress_monitor.is_alive():
+                progress_monitor.terminate()
+            progress_monitor.join()
+            manager.shutdown()
 
         update_progress(100)
