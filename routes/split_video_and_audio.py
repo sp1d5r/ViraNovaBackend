@@ -1,7 +1,7 @@
 import subprocess
 from tempfile import NamedTemporaryFile
 import os
-from flask import Blueprint
+from flask import Blueprint, jsonify
 from services.verify_video_document import parse_and_verify_video
 from services.firebase import FirebaseService
 
@@ -66,6 +66,21 @@ def split_video_to_audio_and_video(video_id: str):
                                          {'progressMessage': "Audio file uploaded."})
 
         firebase_service.update_document('videos', video_id, {'status': "Transcribing"})
-        return "Converted Video", 200
+        return jsonify(
+            {
+                "status": "success",
+                "data": {
+                    "video_id": video_id,
+                },
+                "message": "Successfully split audio from video"
+            }), 200
     else:
-        return error_message, 404
+        return jsonify(
+            {
+                "status": "error",
+                "data": {
+                    "video_id": video_id,
+                    "error": error_message
+                },
+                "message": "Failed to split audio from video"
+            }), 400

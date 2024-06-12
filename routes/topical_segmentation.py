@@ -2,7 +2,7 @@ import numpy as np
 from services.verify_video_document import parse_and_verify_video
 from services.firebase import FirebaseService
 from services.open_ai import OpenAIService
-from flask import Blueprint
+from flask import Blueprint, jsonify
 
 topical_segmentation = Blueprint("topical_segmentation", __name__)
 
@@ -21,6 +21,7 @@ def extract_boundaries(angular_distances, threshold):
     # Convert angular distances to a binary segmentation based on the threshold
     binary_segmentation = [1 if distance > threshold else 0 for distance in angular_distances]
     return binary_segmentation
+
 
 def cosine_similarity(v1, v2):
     """Compute the cosine similarity between two vectors."""
@@ -82,6 +83,7 @@ def calculate_boundaries_for_segments(subset_embeddings, update_progress):
     angular_distances = [d if d is not None else mean_angular_distance for d in angular_distances]
 
     return extract_boundaries(angular_distances, mean_angular_distance + std_deviation * std)
+
 
 def create_fixed_length_transcripts(transcripts_with_words, n=100):
     # List to hold the new fixed-length transcripts
@@ -181,7 +183,6 @@ def create_segments(fixed_length_transcripts, boundaries, video_id, update_progr
 
 
 # Routes
-
 def reformat_transcripts(transcripts):
     # Sort the transcripts based on the 'index' key
     sorted_transcripts = sorted(transcripts, key=lambda x: x['index'])
@@ -204,71 +205,98 @@ def reformat_transcripts(transcripts):
 
 @topical_segmentation.route("/v0/extract-topical-segments/<video_id>")
 def extract_topical_segments(video_id: str):
-    # Access video document and verify existance
-    firebase_service = FirebaseService()
-    open_ai_service = OpenAIService()
-    video_document = firebase_service.get_document("videos", video_id)
-    is_valid_document, error_message = parse_and_verify_video(video_document)
-    update_progress_message = lambda x: firebase_service.update_document('videos', video_id,
-                                                                         {'progressMessage': x})
-    update_progress = lambda x: firebase_service.update_document('videos', video_id,
-                                                                 {'processingProgress': x})
+    try:
+        # Access video document and verify existance
+        firebase_service = FirebaseService()
+        open_ai_service = OpenAIService()
+        video_document = firebase_service.get_document("videos", video_id)
+        is_valid_document, error_message = parse_and_verify_video(video_document)
+        update_progress_message = lambda x: firebase_service.update_document('videos', video_id,
+                                                                             {'progressMessage': x})
+        update_progress = lambda x: firebase_service.update_document('videos', video_id,
+                                                                     {'processingProgress': x})
 
-    if is_valid_document:
-        update_progress(0)
+        if is_valid_document:
+            update_progress(0)
 
-        # Delete Previous Topical Segments if they exist.
-        previous_topical_segments = firebase_service.query_topical_segments_by_video_id(video_id)
-        print("Previous_topical segments", previous_topical_segments)
-        if previous_topical_segments and len(previous_topical_segments) > 0:
-            for topical_seg in previous_topical_segments:
-                firebase_service.delete_document('topical_segments', topical_seg['id'])
+            # Delete Previous Topical Segments if they exist.
+            previous_topical_segments = firebase_service.query_topical_segments_by_video_id(video_id)
+            print("Previous_topical segments", previous_topical_segments)
+            if previous_topical_segments and len(previous_topical_segments) > 0:
+                for topical_seg in previous_topical_segments:
+                    firebase_service.delete_document('topical_segments', topical_seg['id'])
 
-        update_progress_message("Determining the video topics...")
-        transcripts = firebase_service.query_transcripts_by_video_id_with_words(video_id)
-        transcripts = reformat_transcripts(transcripts)
-        update_progress_message("Extracting Transcript Words")
-        words = []
+            update_progress_message("Determining the video topics...")
+            transcripts = firebase_service.query_transcripts_by_video_id_with_words(video_id)
+            transcripts = reformat_transcripts(transcripts)
+            update_progress_message("Extracting Transcript Words")
+            words = []
 
-        for transcript_seg in transcripts:
-            words.extend(transcript_seg['words'])
+            for transcript_seg in transcripts:
+                words.extend(transcript_seg['words'])
 
-        num_transcripts = len(words) // FIXED_SEGMENT_LENGTH + (1 if len(words) % FIXED_SEGMENT_LENGTH != 0 else 0)
-        segmented_transcripts = []
+            num_transcripts = len(words) // FIXED_SEGMENT_LENGTH + (1 if len(words) % FIXED_SEGMENT_LENGTH != 0 else 0)
+            segmented_transcripts = []
 
-        for i in range(num_transcripts):
-            start_index = i * FIXED_SEGMENT_LENGTH
-            end_index = min((i + 1) * FIXED_SEGMENT_LENGTH, len(words))
-            words_segment = words[start_index:end_index]
-            segmented_transcripts.append(words_segment)
+            for i in range(num_transcripts):
+                start_index = i * FIXED_SEGMENT_LENGTH
+                end_index = min((i + 1) * FIXED_SEGMENT_LENGTH, len(words))
+                words_segment = words[start_index:end_index]
+                segmented_transcripts.append(words_segment)
 
 
-        fixed_length_segments = [
+            fixed_length_segments = [
+                {
+                    'start_time': min([j['start_time'] for j in i if j['start_time'] is not None]),
+                    'end_time': max([j['end_time'] for j in i if j['end_time'] is not None]),
+                    'start_index': min([j['index'] for j in i if j['index'] is not None]),
+                    'end_index': max([j['index'] for j in i if j['index'] is not None]),
+                    'transcript': ' '.join([j['word'] for j in i if j]),
+                    'words': i,
+                }
+                for i in segmented_transcripts
+            ]
+
+            update_progress_message("Getting text embeddings... This might take a while...")
+            embeddings = open_ai_service.get_embeddings_parallel([i['transcript'] for i in fixed_length_segments], SEGMENTS_TO_SEND_IN_PARALLEL, update_progress=update_progress)
+
+            update_progress_message("Finding topic changes")
+            boundaries = get_transcript_topic_boundaries(embeddings, update_progress, update_progress_message)
+            segments = create_segments(fixed_length_segments, boundaries, video_id, update_progress, update_progress_message)
+
+            update_progress_message("Uploading segments to database")
+            for index, segment in enumerate(segments):
+                update_progress((index+1)/len(segments) * 100)
+                firebase_service.add_document("topical_segments", segment)
+
+            update_progress_message("Finished Segmenting Video!")
+            firebase_service.update_document('videos', video_id, {'status': "Summarizing Segments"})
+            return jsonify(
+                {
+                    "status": "success",
+                    "data": {
+                        "video_id": video_id,
+                        "segments": segments
+                    },
+                    "message": "Successfully performed topical segmentation"
+                }), 200
+        else:
+            return jsonify(
+                {
+                    "status": "error",
+                    "data": {
+                        "video_id": video_id,
+                        "error": error_message
+                    },
+                    "message": "Failed to perform topical segmentation"
+                }), 400
+    except Exception as e:
+        return jsonify(
             {
-                'start_time': min([j['start_time'] for j in i if j['start_time'] is not None]),
-                'end_time': max([j['end_time'] for j in i if j['end_time'] is not None]),
-                'start_index': min([j['index'] for j in i if j['index'] is not None]),
-                'end_index': max([j['index'] for j in i if j['index'] is not None]),
-                'transcript': ' '.join([j['word'] for j in i if j]),
-                'words': i,
-            }
-            for i in segmented_transcripts
-        ]
-
-        update_progress_message("Getting text embeddings... This might take a while...")
-        embeddings = open_ai_service.get_embeddings_parallel([i['transcript'] for i in fixed_length_segments], SEGMENTS_TO_SEND_IN_PARALLEL, update_progress=update_progress)
-
-        update_progress_message("Finding topic changes")
-        boundaries = get_transcript_topic_boundaries(embeddings, update_progress, update_progress_message)
-        segments = create_segments(fixed_length_segments, boundaries, video_id, update_progress, update_progress_message)
-
-        update_progress_message("Uploading segments to database")
-        for index, segment in enumerate(segments):
-            update_progress((index+1)/len(segments) * 100)
-            firebase_service.add_document("topical_segments", segment)
-
-        update_progress_message("Finished Segmenting Video!")
-        firebase_service.update_document('videos', video_id, {'status': "Summarizing Segments"})
-        return segments, 200
-    else:
-        return error_message, 404
+                "status": "error",
+                "data": {
+                    "video_id": video_id,
+                    "error": e
+                },
+                "message": "Failed to perform topical segmentation"
+            }), 400
