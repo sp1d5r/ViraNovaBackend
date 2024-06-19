@@ -1,0 +1,20 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: viranova-servicemonitor
+  namespace: viranova
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: viranova
+  namespaceSelector:
+    matchNames:
+      - viranova
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scheme: http
+      honorLabels: true

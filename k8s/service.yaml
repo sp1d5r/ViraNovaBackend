@@ -1,11 +1,8 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: flask-service
+  name: viranova-flask-service
   namespace: viranova
-  annotations:
-    service.beta.kubernetes.io/do-loadbalancer-protocol: "http"
-    service.beta.kubernetes.io/do-loadbalancer-connection-idle-timeout: "1800"  # 30 minutes
 spec:
   selector:
     app: viranova
@@ -13,4 +10,4 @@ spec:
     - protocol: TCP
       port: 80
       targetPort: 5000
-  type: LoadBalancer
+  type: ClusterIP
