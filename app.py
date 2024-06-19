@@ -16,7 +16,12 @@ from flask_cors import CORS
 from flask import Flask, request, jsonify, g
 from prometheus_flask_exporter import PrometheusMetrics
 from routes.youtube_link import youtube_link
+import os
 from services.firebase import FirebaseService
+import jwt
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 PrometheusMetrics(app)
@@ -58,14 +63,37 @@ SERVER_STATUS_PENDING = "Pending"
 SERVER_STATUS_COMPLETE = "Completed"
 SERVER_STATUS_PROCESSING = "Processing"
 
+SECRET_KEY = os.getenv("SECRET_KEY")
+
+def verify_jwt(token, secret_key):
+    try:
+        decoded = jwt.decode(token, secret_key, algorithms=['HS256'])
+        return decoded
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
+
 @app.before_request
 def check_status():
+    # Verify request beforehand
+    auth_header = request.headers.get('Authorization', None)
+    if auth_header:
+        parts = auth_header.split()
+        if parts[0].lower() != 'bearer' or len(parts) == 1 or len(parts) > 2:
+            return jsonify({'message': 'Invalid Authorization header format'}), 401
+
+        token = parts[1]
+        decoded = verify_jwt(token, SECRET_KEY)
+        if decoded is None:
+            return jsonify({'message': 'Invalid or expired token'}), 401
+    else:
+        return jsonify({'message': 'Authorization header missing'}), 401
+
     video_id = None
     short_id = None
     segment_id = None
-
-    print(request)
-    print(request.view_args)
 
     # Get video / segment / short
     if request.view_args:

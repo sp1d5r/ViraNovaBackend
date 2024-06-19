@@ -39,6 +39,7 @@ jobs:
           LANGCHAIN_TRACING_V2=${{ secrets.LANGCHAIN_TRACING_V2}}
           LANGCHAIN_API_KEY=${{ secrets.LANGCHAIN_API_KEY}}
           LANGCHAIN_PROJECT=${{ secrets.LANGCHAIN_PROJECT}}
+          SECRET_KEY=${{ secrets.SECRET_KEY }}
 
     - name: Set up kubectl
       uses: azure/setup-kubectl@v3

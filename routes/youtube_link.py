@@ -61,19 +61,27 @@ def begin_youtube_link_download(video_id: str):
                                                  {'progressMessage': "Video data downloaded"})
                 update_progress_message("Video transcript uploaded!")
                 update_progress(100)
+                firebase_service.update_document('videos', video_id, {'status': "Segmenting"})
+                return jsonify(
+                    {
+                        "status": "success",
+                        "data": {
+                            "video_id": video_id,
+                        },
+                        "message": "Successfully downloaded youtube video"
+                    }), 200
             except Exception as e:
                 update_progress_message("Try a different video -" +  str(e))
                 update_progress(0)
-
-            firebase_service.update_document('videos', video_id, {'status': "Segmenting"})
-            return jsonify(
-                {
-                    "status": "error",
-                    "data": {
-                        "video_id": video_id,
-                    },
-                    "message": "Successfully downloaded youtube video"
-                }), 400
+                return jsonify(
+                    {
+                        "status": "error",
+                        "data": {
+                            "video_id": video_id,
+                            "error": e
+                        },
+                        "message": "Failed to download youtube video"
+                    }), 400
         else:
             return jsonify(
                 {

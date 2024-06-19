@@ -7,3 +7,4 @@ scripts/*
 **/__pycache__/
 venv/*
 .DS_Store
+k8s/*
