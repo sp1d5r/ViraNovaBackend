@@ -76,7 +76,7 @@ def summarise_segments_for_transcript(video_id):
                 "status": "error",
                 "data": {
                     "video_id": video_id,
-                    "error": e
+                    "error": str(e)
                 },
                 "message": "Failed to summarise segments"
             }), 400

@@ -115,7 +115,7 @@ def generate_short_video(short_id):
                 "status": "error",
                 "data": {
                     "short_id": short_id,
-                    "error": e
+                    "error": str(e)
                 },
                 "message": "Failed to create clipped video"
             }), 400

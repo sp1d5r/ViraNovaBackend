@@ -77,7 +77,7 @@ def crop_video_to_segment(segment_id):
                 "status": "error",
                 "data": {
                     "segment_id": segment_id,
-                    "error": e
+                    "error": str(e)
                 },
                 "message": "Failed to cropped segment video"
             }), 400

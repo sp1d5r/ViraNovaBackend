@@ -65,7 +65,7 @@ def get_saliency_for_short(short_id):
                 "status": "error",
                 "data": {
                     "short_id": short_id,
-                    "error": e,
+                    "error": str(e),
                 },
                 "message": "Failed to generate saliency for video"
             }), 400

@@ -56,7 +56,7 @@ def process_video_upload(project_id,  jwt_secret, ip_address, api_route, video_i
     client = create_client()
 
     # Create and add a task to the queue
-    create_task(client, project, queue, location, url)
+    create_task(client, project, queue, token, location, url)
 
 
 def preprocess_video_documents(event, context):
@@ -76,7 +76,7 @@ def preprocess_video_documents(event, context):
     # Get Backend IP Address
     ip_address = os.getenv("BACKEND_SERVICE_ADDRESS")
     project_id = os.getenv("PROJECT_ID")
-    jwt_secret_key = os.getenv("JWT_TOKEN")
+    jwt_secret_key = os.getenv("SECRET_KEY")
 
     # Setup Firestore client
     db = google.cloud.firestore.Client()

@@ -296,7 +296,7 @@ def extract_topical_segments(video_id: str):
                 "status": "error",
                 "data": {
                     "video_id": video_id,
-                    "error": e
+                    "error": str(e)
                 },
                 "message": "Failed to perform topical segmentation"
             }), 400

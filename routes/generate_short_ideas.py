@@ -69,7 +69,7 @@ def generate_short_ideas_from_segments(video_id: str):
                 "status": "error",
                 "data": {
                     "video_id": video_id,
-                    "error": e
+                    "error": str(e)
                 },
                 "message": "Failed to generate short ideas for video segments"
             }), 400
@@ -138,7 +138,7 @@ def generate_short_ideas_for_segments(segment_id: str):
                 "status": "error",
                 "data": {
                     "segment_id": segment_id,
-                    "error": e
+                    "error": str(e)
                 },
                 "message": "Failed to generate short ideas for segment"
             }), 400

@@ -68,7 +68,7 @@ def transcribe_and_diarize(video_id: str):
                 "status": "error",
                 "data": {
                     "video_id": video_id,
-                    "error": e
+                    "error": str(e)
                 },
                 "message": "Failed to transcribe and diarize audio"
             }), 400

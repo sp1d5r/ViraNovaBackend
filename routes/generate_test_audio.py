@@ -157,7 +157,7 @@ def generate_test_audio_for_short(short_id):
                 "status": "error",
                 "data": {
                     "short_id": short_id,
-                    "error": e
+                    "error": str(e)
                 },
                 "message": "Failed to generate audio for clip"
             }), 400

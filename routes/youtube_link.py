@@ -78,7 +78,7 @@ def begin_youtube_link_download(video_id: str):
                         "status": "error",
                         "data": {
                             "video_id": video_id,
-                            "error": e
+                            "error": str(e)
                         },
                         "message": "Failed to download youtube video"
                     }), 400
@@ -98,7 +98,7 @@ def begin_youtube_link_download(video_id: str):
                 "status": "error",
                 "data": {
                     "video_id": video_id,
-                    "error": e
+                    "error": str(e)
                 },
                 "message": "Failed to download youtube video"
             }), 400

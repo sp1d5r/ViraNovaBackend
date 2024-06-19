@@ -149,7 +149,7 @@ def perform_temporal_segmentation(short_id):
                 except Exception as e:
                     update_logs({
                         "time": datetime.now(),
-                        "message": f"FAILED IN PIPELINE: {e}",
+                        "message": f"FAILED IN PIPELINE: {str(e)}",
                         "type": "error"
                     })
                     error_count += 1
@@ -184,7 +184,7 @@ def perform_temporal_segmentation(short_id):
                 "status": "error",
                 "data": {
                     "short_id": short_id,
-                    "error": e
+                    "error": str(e)
                 },
                 "message": "Failed to edit transcript"
             }), 400

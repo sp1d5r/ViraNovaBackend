@@ -102,7 +102,7 @@ def determine_boundaries(short_id):
                 "status": "error",
                 "data": {
                     "short_id": short_id,
-                    "error": e
+                    "error": str(e)
                 },
                 "message": "Failed to find camera cuts in video"
             }), 400
@@ -243,7 +243,7 @@ def get_bounding_boxes(short_id):
                 "status": "error",
                 "data": {
                     "short_id": short_id,
-                    "error": e
+                    "error": str(e)
                 },
                 "message": "Failed to find bounding boxes"
             }), 400
@@ -566,7 +566,7 @@ def create_cropped_video(short_id):
                 "status": "error",
                 "data": {
                     "short_id": short_id,
-                    "error": e
+                    "error": str(e)
                 },
                 "message": "Failed to preview video"
             }), 400

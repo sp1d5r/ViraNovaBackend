@@ -82,13 +82,16 @@ def check_status():
     if auth_header:
         parts = auth_header.split()
         if parts[0].lower() != 'bearer' or len(parts) == 1 or len(parts) > 2:
+            print('Invalid Authorization header format')
             return jsonify({'message': 'Invalid Authorization header format'}), 401
 
         token = parts[1]
         decoded = verify_jwt(token, SECRET_KEY)
         if decoded is None:
+            print('Invalid or expired token')
             return jsonify({'message': 'Invalid or expired token'}), 401
     else:
+        print('Authorization header missing')
         return jsonify({'message': 'Authorization header missing'}), 401
 
     video_id = None
