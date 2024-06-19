@@ -57,30 +57,33 @@ jobs:
     - name: Set Kubernetes context
       run: doctl kubernetes cluster kubeconfig save ${{ secrets.DO_CLUSTER_NAME }}
 
-#    - name: Create Kubernetes secrets
+
+    - name: Create Kubernetes secrets
+      run: |
+        kubectl create secret generic flask-app-secrets -n viranova \
+          --from-literal=SERVICE_ACCOUNT_ENCODED=${{ secrets.SERVICE_ACCOUNT_ENCODED }} \
+          --from-literal=OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} \
+          --from-literal=POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }} \
+          --from-literal=LANGCHAIN_API_KEY=${{ secrets.LANGCHAIN_API_KEY }} \
+          --from-literal=FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }} \
+          --from-literal=POSTGRES_USER=${{ secrets.POSTGRES_USER }} \
+          --from-literal=POSTGRES_HOST=${{ secrets.POSTGRES_HOST }} \
+          --from-literal=POSTGRES_PORT=${{ secrets.POSTGRES_PORT }} \
+          --from-literal=POSTGRES_DATABASE=${{ secrets.POSTGRES_DATABASE }} \
+          --from-literal=POSTGRES_SSLMODE=${{ secrets.POSTGRES_SSLMODE }} \
+          --from-literal=QDRANT_LOCATION=${{ secrets.QDRANT_LOCATION }} \
+          --from-literal=LANGCHAIN_TRACING_V2=${{ secrets.LANGCHAIN_TRACING_V2 }} \
+          --from-literal=LANGCHAIN_PROJECT=${{ secrets.LANGCHAIN_PROJECT }}
+          --from-literal=SECRET_KEY=${{ secrets.SECRET_KEY }}
+
+#
+#    - name: Apply Kubernetes configurations
 #      run: |
-#        kubectl create secret generic flask-app-secrets -n viranova \
-#          --from-literal=SERVICE_ACCOUNT_ENCODED=${{ secrets.SERVICE_ACCOUNT_ENCODED }} \
-#          --from-literal=OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} \
-#          --from-literal=POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }} \
-#          --from-literal=LANGCHAIN_API_KEY=${{ secrets.LANGCHAIN_API_KEY }} \
-#          --from-literal=FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }} \
-#          --from-literal=POSTGRES_USER=${{ secrets.POSTGRES_USER }} \
-#          --from-literal=POSTGRES_HOST=${{ secrets.POSTGRES_HOST }} \
-#          --from-literal=POSTGRES_PORT=${{ secrets.POSTGRES_PORT }} \
-#          --from-literal=POSTGRES_DATABASE=${{ secrets.POSTGRES_DATABASE }} \
-#          --from-literal=POSTGRES_SSLMODE=${{ secrets.POSTGRES_SSLMODE }} \
-#          --from-literal=QDRANT_LOCATION=${{ secrets.QDRANT_LOCATION }} \
-#          --from-literal=LANGCHAIN_TRACING_V2=${{ secrets.LANGCHAIN_TRACING_V2 }} \
-#          --from-literal=LANGCHAIN_PROJECT=${{ secrets.LANGCHAIN_PROJECT }}
-
-    - name: Apply Kubernetes configurations
-      run: |
-        kubectl apply -f k8s/namespace.yaml
-        kubectl apply -f k8s/configmap.yaml
-        kubectl apply -f k8s/deployment.yaml
-        kubectl apply -f k8s/service.yaml
-
-    - name: Deploy to Kubernetes
-      run: |
-        kubectl set image deployment/viranova -n viranova viranova=registry.digitalocean.com/viranova-container/viranovabackend:latest
+#        kubectl apply -f k8s/namespace.yaml
+#        kubectl apply -f k8s/configmap.yaml
+#        kubectl apply -f k8s/deployment.yaml
+#        kubectl apply -f k8s/service.yaml
+#
+#    - name: Deploy to Kubernetes
+#      run: |
+#        kubectl set image deployment/viranova -n viranova viranova=registry.digitalocean.com/viranova-container/viranovabackend:latest
