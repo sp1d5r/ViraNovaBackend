@@ -3,19 +3,31 @@ from google.protobuf import timestamp_pb2
 import datetime
 import json
 from google.protobuf import duration_pb2
+import jwt
+
+
+def create_jwt_token(secret_key, payload):
+    payload['exp'] = datetime.datetime.utcnow() + datetime.timedelta(minutes=30)
+    token = jwt.encode(payload, secret_key, algorithm='HS256')
+    return token
+
 
 def create_client():
     # Creates a client for the Cloud Tasks service.
     return tasks_v2.CloudTasksClient()
 
-def create_task(client, project, queue, location, url):
+
+def create_task(client, project, queue, token, location, url):
     # Construct the fully qualified queue name.
     parent = client.queue_path(project, location, queue)
 
     task = {
         'http_request': {
             'http_method': tasks_v2.HttpMethod.GET,
-            'url': url
+            'url': url,
+            'headers': {
+                'Authorization': f'Bearer {token}'
+            }
         },
     }
     # Add the task to the created queue.
@@ -23,7 +35,8 @@ def create_task(client, project, queue, location, url):
     print('Task: ', task)
     print('Task created: {}'.format(response.name))
 
-def process_video_upload(project_id, ip_address, api_route, video_id):
+
+def process_video_upload(project_id,  jwt_secret, ip_address, api_route, video_id):
     # Setup your Google Cloud project details
     project = project_id  # Replace with your GCP project ID
     queue = 'viranova-preprocessing-queue'  # The name of your queue
@@ -32,11 +45,19 @@ def process_video_upload(project_id, ip_address, api_route, video_id):
     # The URL you want the task to request
     url = f'{ip_address}/{api_route}/{video_id}'
 
+    payload = {
+        'video_id': video_id,
+        'api_route': api_route
+    }
+
+    token = create_jwt_token(jwt_secret, payload)
+
     # Create a Cloud Tasks client
     client = create_client()
 
     # Create and add a task to the queue
-    create_task(client, project, queue, location, url)
+    create_task(client, project, queue, token, location, url)
+
 
 def edit_segments(event, context):
     """
@@ -55,6 +76,8 @@ def edit_segments(event, context):
     # Get Backend IP Address
     ip_address = os.getenv("BACKEND_SERVICE_ADDRESS")
     project_id = os.getenv("PROJECT_ID")
+    jwt_secret_key = os.getenv("SECRET_KEY")
+
     # Setup Firestore client
     db = google.cloud.firestore.Client()
 
@@ -78,7 +101,7 @@ def edit_segments(event, context):
 
         if new_status in status_route_mapping:
             api_route = status_route_mapping[new_status]
-            process_video_upload(project_id, ip_address, api_route, document_id)
+            process_video_upload(project_id, jwt_secret_key, ip_address, api_route, document_id)
     else:
         print("Temporal Segmentation Stage triggered... Nothing happened.")
 
