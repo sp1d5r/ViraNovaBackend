@@ -77,6 +77,9 @@ def verify_jwt(token, secret_key):
 
 @app.before_request
 def check_status():
+    if request.path == '/metrics':
+        return None
+
     # Verify request beforehand
     auth_header = request.headers.get('Authorization', None)
     if auth_header:
