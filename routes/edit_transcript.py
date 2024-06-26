@@ -103,7 +103,7 @@ def perform_temporal_segmentation(short_id):
 
                         delete_operation_uuid = uuid.uuid4()
                         transcript_delete_operation = delete_operation_chain.invoke(
-                            {"transcript": " ".join([f"({i[0]}) {i[1]}" for i in words_with_index if i[0] > 0]),
+                            {"transcript": " ".join([f"({i[0]}) {i[1]}" for i in words_with_index]),
                              "short_idea": short_idea},
                             config={"run_id": delete_operation_uuid, "metadata": {"short_id": short_id}}
                         )
@@ -131,7 +131,7 @@ def perform_temporal_segmentation(short_id):
                         })
 
 
-                        if len(words_with_index) < 70:
+                        if len([i for i in words_with_index if i[0] > -1]) < 70:
                             update_logs({
                                 "time": datetime.now(),
                                 "message": "CHAIN: Transcript has gotten met minimum word limit..",

@@ -2,10 +2,7 @@
 A minimal example app which takes a Youtube URL as input and transcribes the video with OpenAI's Whisper.
 """
 from beam import App, Runtime, Image, Output, Volume
-
 import os
-import whisper
-from pytube import YouTube
 
 
 app = App(
@@ -38,32 +35,14 @@ def load_models():
 def transcribe(**inputs):
     # Grab the video URL passed from the API
     try:
-        video_url = inputs["video_url"]
+        video_url = inputs["video_id"]
     # Use a default input if none is provided
     except KeyError:
-        video_url = "https://www.youtube.com/watch?v=adJFT6_j9Uk&ab_channel=minutephysics"
+        return {"error": "No video incorrect video entered"}
     
 
-    # Create YouTube object
-    yt = YouTube(video_url)
-    video = yt.streams.filter(only_audio=True).first()
-
-    # Download audio to the output path
-    out_file = video.download(output_path="./")
-    base, ext = os.path.splitext(out_file)
-    new_file = base + ".mp3"
-    os.rename(out_file, new_file)
-    a = new_file
-
-    # Retrieve model from loader
-    model = inputs["context"]
-    # Inference
-    result = model.transcribe(a)
-
-    print(result["text"])
     return {"pred": result["text"]}
 
 
 if __name__ == "__main__":
-    video_url = "https://www.youtube.com/watch?v=adJFT6_j9Uk&ab_channel=minutephysics"
     transcribe(video_url=video_url)

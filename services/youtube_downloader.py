@@ -5,8 +5,13 @@ from pytube.innertube import _default_clients
 
 
 def download_video(video_id, url, update_progress, update_progress_message):
-    yt = YouTube(url)
+    my_proxies = {
+        'http': '5.180.19.163:1080',  # Example for a proxy i could use
+        'https': '5.180.19.163:1080'  # Example for a proxy i could use.
+    }
+
     _default_clients["ANDROID_MUSIC"] = _default_clients["WEB"]
+    yt = YouTube(url) # with the proxy i would update like this: , proxies=my_proxies
     update_progress(20)
     update_progress_message("Beginning Download - Highest resolution, you're welcome")
     video = yt.streams.get_highest_resolution()
@@ -83,7 +88,6 @@ def download_transcript_from_video_id(video_id, link):
     yt = YouTube(link)
     try:
         streams = yt.streams
-        yt.bypass_age_gate()
         captions = yt.captions
         if not captions:
             print("No Captions Available for Video")

@@ -1,0 +1,6 @@
+torch
+opencv-python
+firebase-admin
+numpy
+python-dotenv
+timm

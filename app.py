@@ -154,15 +154,15 @@ def update_status(response):
     segment_id = request.view_args.get("segment_id")
 
     firebase_service = FirebaseService()
-    if response.status_code == 200:
-        if video_id:
-            firebase_service.update_document("videos", video_id, {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE})
-        if segment_id:
-            firebase_service.update_document("topical_segments", segment_id,
-                                             {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE})
-        if short_id:
-            firebase_service.update_document("shorts", short_id,
-                                             {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE})
+
+    if video_id:
+        firebase_service.update_document("videos", video_id, {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE})
+    if segment_id:
+        firebase_service.update_document("topical_segments", segment_id,
+                                         {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE})
+    if short_id:
+        firebase_service.update_document("shorts", short_id,
+                                         {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE})
 
     return response
 

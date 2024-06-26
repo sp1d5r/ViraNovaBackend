@@ -72,6 +72,7 @@ def begin_youtube_link_download(video_id: str):
                     }), 200
             except Exception as e:
                 update_progress_message("Try a different video -" +  str(e))
+                print(e)
                 update_progress(0)
                 return jsonify(
                     {
