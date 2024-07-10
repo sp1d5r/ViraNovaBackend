@@ -1,67 +1,91 @@
-# Use an official Python runtime as a base image
-FROM python:3.11-slim
+# Use the official AWS base image for Python 3.11
+FROM public.ecr.aws/lambda/python:3.11
 
-# Set the working directory in the container to /app
-WORKDIR /app
+# Set the working directory inside the container
+WORKDIR /var/task
 
-# Copy the current directory contents into the container at /app
-COPY . /app
-
-# Install any needed packages specified in requirements.txt
-# Including Gunicorn, Firebase Admin SDK, Google Cloud Text-to-Speech, OpenAI, and Flask
-RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install gunicorn firebase-admin google-cloud-texttospeech openai Flask
-
-# Install FFMPEG
-RUN apt-get update && \
-    apt-get install -y ffmpeg && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Get environment vars
-# Google Keys
-ARG SERVICE_ACCOUNT_ENCODED
-ENV SERVICE_ACCOUNT_ENCODED=${SERVICE_ACCOUNT_ENCODED}
+# Set environment variables
+# Define build arguments and set environment variables
 ARG FIREBASE_STORAGE_BUCKET
 ENV FIREBASE_STORAGE_BUCKET=${FIREBASE_STORAGE_BUCKET}
 
-# Open AI Keys
 ARG OPENAI_API_KEY
 ENV OPENAI_API_KEY=${OPENAI_API_KEY}
 
-# Postgres Database
+ARG OPEN_AI_KEY_OLD
+ENV OPEN_AI_KEY_OLD=${OPEN_AI_KEY_OLD}
+
+ARG SERVICE_ACCOUNT_ENCODED
+ENV SERVICE_ACCOUNT_ENCODED=${SERVICE_ACCOUNT_ENCODED}
+
+ARG BACKEND_SERVICE_ADDRESS
+ENV BACKEND_SERVICE_ADDRESS=${BACKEND_SERVICE_ADDRESS}
+
+ARG VIDEO_DOWNLOAD_LOCATION
+ENV VIDEO_DOWNLOAD_LOCATION=${VIDEO_DOWNLOAD_LOCATION}
+
+ARG AUDIO_DOWNLOAD_LOCATION
+ENV AUDIO_DOWNLOAD_LOCATION=${AUDIO_DOWNLOAD_LOCATION}
+
 ARG POSTGRES_USER
 ENV POSTGRES_USER=${POSTGRES_USER}
+
 ARG POSTGRES_PASSWORD
 ENV POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+
 ARG POSTGRES_HOST
 ENV POSTGRES_HOST=${POSTGRES_HOST}
+
 ARG POSTGRES_PORT
 ENV POSTGRES_PORT=${POSTGRES_PORT}
+
 ARG POSTGRES_DATABASE
 ENV POSTGRES_DATABASE=${POSTGRES_DATABASE}
+
 ARG POSTGRES_SSLMODE
 ENV POSTGRES_SSLMODE=${POSTGRES_SSLMODE}
 
-# QDRANT Vector DB
 ARG QDRANT_LOCATION
 ENV QDRANT_LOCATION=${QDRANT_LOCATION}
 
-# Lanchain Env
 ARG LANGCHAIN_TRACING_V2
 ENV LANGCHAIN_TRACING_V2=${LANGCHAIN_TRACING_V2}
+
 ARG LANGCHAIN_API_KEY
 ENV LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY}
+
 ARG LANGCHAIN_PROJECT
 ENV LANGCHAIN_PROJECT=${LANGCHAIN_PROJECT}
 
+ARG NUM_CPU_CORES
+ENV NUM_CPU_CORES=${NUM_CPU_CORES}
 
-# Make port 5000 available to the world outside this container
-EXPOSE 5000
+ARG SECRET_KEY
+ENV SECRET_KEY=${SECRET_KEY}
 
-# Define environment variable to specify the Flask application
-ENV FLASK_APP=app.py
+ARG SALIENCY_BEARER_TOKEN
+ENV SALIENCY_BEARER_TOKEN=${SALIENCY_BEARER_TOKEN}
 
-# Use Gunicorn to serve the Flask app. Adjust the number of workers and threads as necessary.
-# Replace 'app:app' with 'your_flask_app_module:app' if your application's instance is named differently
-CMD ["gunicorn", "-b", "0.0.0.0:5000", "--timeout", "1800", "app:app"]
+ARG SALIENCY_ENDPOINT_ADDRESS
+ENV SALIENCY_ENDPOINT_ADDRESS=${SALIENCY_ENDPOINT_ADDRESS}
+
+
+# Run YUM commands with sufficient space and simplified logic
+RUN yum -y update && \
+    yum -y install gcc python3-devel && \
+    yum clean all
+
+# Copy the requirements file into the image
+COPY ./serverless_backend/requirements.txt .
+
+# Install the required packages with increased timeout
+RUN pip install --timeout=100 --no-cache-dir -r requirements.txt
+
+# Copy the rest of the application code into the image
+COPY serverless_backend/ /var/task/serverless_backend/
+
+# Set the PYTHONPATH environment variable to include the serverless-backend directory
+ENV PYTHONPATH=/var/task
+
+# Set the CMD to your handler
+CMD ["serverless_backend.app.lambda_handler"]

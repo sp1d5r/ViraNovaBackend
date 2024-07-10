@@ -8,3 +8,7 @@ scripts/*
 venv/*
 .DS_Store
 k8s/*
+*.zip
+*.tar.gz
+zappa_settings.json
+*.db
