@@ -13,6 +13,7 @@ astor==0.8.1
 asttokens==2.4.1
 async-lru==2.0.4
 attrs==23.2.0
+aws-wsgi==0.2.7
 Babel==2.15.0
 beam==0.6.0
 # beam-sdk==0.15.15

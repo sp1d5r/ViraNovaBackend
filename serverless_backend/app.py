@@ -1,3 +1,4 @@
+import awsgi
 from serverless_backend.routes.generate_short_ideas import generate_short_ideas
 from serverless_backend.routes.deprecated.get_random_video import get_random_video
 from serverless_backend.routes.deprecated.get_segmentation_masks import get_segmentation_mask
@@ -16,7 +17,6 @@ from serverless_backend.routes.youtube_link import youtube_link
 from flask_cors import CORS
 from flask import Flask, request, jsonify, g
 import os
-import awsgi
 from serverless_backend.services.firebase import FirebaseService
 import jwt
 from dotenv import load_dotenv
