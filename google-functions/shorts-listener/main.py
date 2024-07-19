@@ -26,7 +26,7 @@ def create_task(client, project, queue, token, location, url):
             'http_method': tasks_v2.HttpMethod.GET,
             'url': url,
             'headers': {
-                'Authorization': f'Bearer {token}'
+                'X-Auth-Token': f'Bearer {token}'
             }
         },
     }
@@ -95,13 +95,13 @@ def temporal_segmentation(event, context):
         print(f"Document with new status: {new_status}")
 
         status_route_mapping = {
-            "Edit Transcript": "temporal-segmentation",
-            "Generate Audio": "generate-test-audio",
-            "Create Short Video": "create-short-video",
-            "Generate Saliency": "get_saliency_for_short",
-            "Determine Video Boundaries": "determine-boundaries",
-            "Get Bounding Boxes": "get-bounding-boxes",
-            "Preview Video": "create-cropped-video"
+            "Edit Transcript": "v1/temporal-segmentation",
+            "Generate Audio": "v1/generate-test-audio",
+            "Create Short Video": "v1/create-short-video",
+            "Generate Saliency": "v1/get_saliency_for_short",
+            "Determine Video Boundaries": "v1/determine-boundaries",
+            "Get Bounding Boxes": "v1/get-bounding-boxes",
+            "Preview Video": "v1/create-cropped-video"
         }
 
         if new_status in status_route_mapping:

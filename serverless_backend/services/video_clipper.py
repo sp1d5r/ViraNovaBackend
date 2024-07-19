@@ -89,5 +89,5 @@ class VideoClipper:
         final_clip = concatenate_videoclips(clips)
 
         # Write the result to the output file
-        final_clip.write_videofile(output_video_path, codec="libx264", fps=24, preset="fast")
+        final_clip.write_videofile(output_video_path, codec="libx264", fps=24, preset="fast", temp_audiofile="/tmp/random_audio.mp3")
 

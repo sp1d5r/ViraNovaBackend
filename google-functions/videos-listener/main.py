@@ -26,7 +26,7 @@ def create_task(client, project, queue, token, location, url):
             'http_method': tasks_v2.HttpMethod.GET,
             'url': url,
             'headers': {
-                'Authorization': f'Bearer {token}'
+                'X-Auth-Token': f'Bearer {token}'
             }
         },
     }
@@ -95,12 +95,12 @@ def preprocess_video_documents(event, context):
         print(f"Document with new status: {new_status}")
 
         status_route_mapping = {
-            "Uploaded": "split-video",
-            "Link Provided": "begin-youtube-link-download",
-            "Transcribing": "transcribe-and-diarize",
-            "Segmenting": "v0/extract-topical-segments",
-            "Summarizing Segments": "summarise-segments",
-            "Create TikTok Ideas": "generate-short-ideas"
+            "Uploaded": "v1/split-video",
+            "Link Provided": "v1/begin-youtube-link-download",
+            "Transcribing": "v1/transcribe-and-diarize",
+            "Segmenting": "v1/extract-topical-segments",
+            "Summarizing Segments": "v1/summarise-segments",
+            "Create TikTok Ideas": "v1/generate-short-ideas"
         }
 
         if new_status in status_route_mapping:

@@ -68,19 +68,27 @@ ENV SALIENCY_BEARER_TOKEN=${SALIENCY_BEARER_TOKEN}
 ARG SALIENCY_ENDPOINT_ADDRESS
 ENV SALIENCY_ENDPOINT_ADDRESS=${SALIENCY_ENDPOINT_ADDRESS}
 
-# Run YUM commands with sufficient space and simplified logic
+# Update YUM and install required system dependencies including ffmpeg
 RUN yum -y update && \
-    yum -y install gcc python3-devel mesa-libGL && \
+    yum -y install gcc python3-devel mesa-libGL ffmpeg && \
     yum clean all
 
 # Copy the requirements file into the image
 COPY ./serverless_backend/requirements.txt .
+
+# Copy FFMPEG to the user/bin
+COPY serverless_backend/ffmpeg /usr/bin
+RUN chmod +x /usr/bin/ffmpeg
 
 # Install the required packages with increased timeout
 RUN pip install --timeout=100 --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application code into the image
 COPY serverless_backend/ /var/task/serverless_backend/
+
+# Add a tmp location
+RUN chmod -R 777 /tmp
+
 
 # Set the PYTHONPATH environment variable to include the serverless-backend directory
 ENV PYTHONPATH=/var/task

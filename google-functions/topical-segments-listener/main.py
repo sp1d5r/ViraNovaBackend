@@ -26,7 +26,7 @@ def create_task(client, project, queue, token, location, url):
             'http_method': tasks_v2.HttpMethod.GET,
             'url': url,
             'headers': {
-                'Authorization': f'Bearer {token}'
+                'X-Auth-Token': f'Bearer {token}'
             }
         },
     }
@@ -95,8 +95,8 @@ def edit_segments(event, context):
         print(f"Document with new status: {new_status}")
 
         status_route_mapping = {
-            "Crop Segment": "crop-segment",
-            "Regenerate Short": "generate-short-ideas-for-segment"
+            "Crop Segment": "v1/crop-segment",
+            "Regenerate Short": "v1/generate-short-ideas-for-segment"
         }
 
         if new_status in status_route_mapping:
