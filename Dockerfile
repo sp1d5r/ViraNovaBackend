@@ -70,7 +70,7 @@ ENV SALIENCY_ENDPOINT_ADDRESS=${SALIENCY_ENDPOINT_ADDRESS}
 
 # Run YUM commands with sufficient space and simplified logic
 RUN yum -y update && \
-    yum -y install gcc python3-devel mesa-libGL && \
+    yum -y install gcc python3-devel mesa-libGL ffmpeg && \
     yum clean all
 
 # Copy the requirements file into the image
@@ -82,8 +82,14 @@ RUN pip install --timeout=100 --no-cache-dir -r requirements.txt
 # Copy the rest of the application code into the image
 COPY serverless_backend/ /var/task/serverless_backend/
 
+# Copy FFMPEG to the user/bin
+COPY serverless_backend/ffmpeg /usr/bin
+RUN chmod +x /usr/bin/ffmpeg
+
 # Set the PYTHONPATH environment variable to include the serverless-backend directory
 ENV PYTHONPATH=/var/task
+
+RUN ffmpeg -version
 
 # Set the CMD to your handler
 CMD ["serverless_backend.app.lambda_handler"]

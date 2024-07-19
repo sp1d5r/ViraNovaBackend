@@ -1,4 +1,4 @@
-import awsgi
+# import awsgi
 from serverless_backend.routes.generate_short_ideas import generate_short_ideas
 from serverless_backend.routes.deprecated.get_random_video import get_random_video
 from serverless_backend.routes.deprecated.get_segmentation_masks import get_segmentation_mask
@@ -78,7 +78,7 @@ def verify_jwt(token, secret_key):
 def check_status():
 
     # Verify request beforehand
-    auth_header = request.headers.get('Authorization', None)
+    auth_header = request.headers.get('X-Auth-Token', None)
     if auth_header:
         parts = auth_header.split()
         if parts[0].lower() != 'bearer' or len(parts) == 1 or len(parts) > 2:
@@ -159,7 +159,7 @@ def update_status(response):
                                          {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE})
     if short_id:
         firebase_service.update_document("shorts", short_id,
-                                         {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE})
+                                         {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE, "pending_operation": False})
 
     return response
 
@@ -178,8 +178,10 @@ def list_routes(app):
 
 
 # Lambda handler
-def lambda_handler(event, context):
-    return awsgi.response(app, event, context)
+# def lambda_handler(event, context):
+#     print("The event: ", event)
+#     print("The context: ", context)
+#     return awsgi.response(app, event, context)
 
 if __name__ == '__main__':
     print(list_routes(app))
