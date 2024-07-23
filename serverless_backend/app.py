@@ -3,6 +3,7 @@ from serverless_backend.routes.generate_short_ideas import generate_short_ideas
 from serverless_backend.routes.deprecated.get_random_video import get_random_video
 from serverless_backend.routes.deprecated.get_segmentation_masks import get_segmentation_mask
 from serverless_backend.routes.deprecated.get_shorts_and_segments import get_shorts_and_segments
+from serverless_backend.routes.get_tiktok_analytics import tiktok_analytics
 from serverless_backend.routes.spacial_segmentation import spacial_segmentation
 from serverless_backend.routes.summarise_segments import summarise_segments
 from serverless_backend.routes.create_short_video import create_short_video
@@ -54,7 +55,7 @@ app.register_blueprint(edit_transcript)
 app.register_blueprint(short_saliency)
 app.register_blueprint(generate_test_audio)
 app.register_blueprint(extract_segment_from_video)
-
+app.register_blueprint(tiktok_analytics)
 
 # App Before/After Hooks
 SERVER_STATUS_COLUMN_NAME = "backend_status"
@@ -144,6 +145,14 @@ def check_status():
 def update_status(response):
     if request.view_args is None:
         return response
+
+    print("RESPONSE STATUS: ", response.status)
+
+    try:
+        response_data = response.get_json()
+        print("RESPONSE DATA: ", response_data)
+    except Exception as e:
+        print("Failed to get JSON response:", str(e))
 
     # Get video / segment / short
     video_id = request.view_args.get('video_id')
