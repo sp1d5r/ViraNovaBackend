@@ -69,7 +69,8 @@ def build_docker_image(repository_uri, dockerfile_path="Dockerfile"):
         "NUM_CPU_CORES": os.getenv("NUM_CPU_CORES"),
         "SECRET_KEY": os.getenv("SECRET_KEY"),
         "SALIENCY_BEARER_TOKEN": os.getenv("SALIENCY_BEARER_TOKEN"),
-        "SALIENCY_ENDPOINT_ADDRESS": os.getenv("SALIENCY_ENDPOINT_ADDRESS")
+        "SALIENCY_ENDPOINT_ADDRESS": os.getenv("SALIENCY_ENDPOINT_ADDRESS"),
+        "APIFY_TOKEN": os.getenv("APIFY_TOKEN")
     }
     build_args = {k: v for k, v in env_vars.items() if v is not None}
 
@@ -81,7 +82,6 @@ def build_docker_image(repository_uri, dockerfile_path="Dockerfile"):
             dockerfile=dockerfile_path,
             buildargs=build_args,
             platform="linux/amd64",
-            cache_from=[repository_uri]  # Use the cache from the existing image if available
         )
         for log in build_logs:
             if 'stream' in log:
@@ -316,7 +316,7 @@ def create_or_update_api_gateway(lambda_function_name, api_name, stage_name, rou
                     'integration.request.header.X-Auth-Token': 'method.request.header.X-Auth-Token'
                 }
             )
-            print(f"Set up integration for {method} method on {route}")
+            print(f"Set up integration for {method} method on {route}, with timeout of 29000")
 
     deployment_response = apigateway_client.create_deployment(
         restApiId=api_id,

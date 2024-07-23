@@ -43,6 +43,6 @@ class VideoAudioMerger:
         # Output the video file using a temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4', dir=os.path.dirname(video_path)) as tmpfile:
             output_path = tmpfile.name
-            video.write_videofile(output_path, codec='libx264', audio_codec='aac')
+            video.write_videofile(output_path, codec='libx264', audio_codec='aac', temp_audiofile="/tmp/random_audio_merger.mp3")
 
         return output_path

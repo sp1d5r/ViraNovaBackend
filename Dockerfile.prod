@@ -68,6 +68,9 @@ ENV SALIENCY_BEARER_TOKEN=${SALIENCY_BEARER_TOKEN}
 ARG SALIENCY_ENDPOINT_ADDRESS
 ENV SALIENCY_ENDPOINT_ADDRESS=${SALIENCY_ENDPOINT_ADDRESS}
 
+ARG APIFY_TOKEN
+ENV APIFY_TOKEN=${APIFY_TOKEN}
+
 # Update YUM and install required system dependencies including ffmpeg
 RUN yum -y update && \
     yum -y install gcc python3-devel mesa-libGL ffmpeg && \
