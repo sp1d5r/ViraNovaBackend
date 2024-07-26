@@ -1,29 +1,52 @@
-from pytube import YouTube
+from pytubefix import YouTube
 import pandas as pd
 import subprocess
-from pytube.innertube import _default_clients
+from pytubefix.innertube import _default_clients
+import random
+from serverless_backend.services.firebase import FirebaseService
 
 
 def download_video(video_id, url, update_progress, update_progress_message):
-    my_proxies = {
-        'http': '5.180.19.163:1080',  # Example for a proxy i could use
-        'https': '5.180.19.163:1080'  # Example for a proxy i could use.
-    }
+    firebase_service = FirebaseService()
+    proxies = firebase_service.get_all_documents('proxies')
+    proxies = [i for i in proxies if i['status'] == 'UP']
 
-    _default_clients["ANDROID_MUSIC"] = _default_clients["WEB"]
-    yt = YouTube(url) # with the proxy i would update like this: , proxies=my_proxies
-    update_progress(20)
-    update_progress_message("Beginning Download - Highest resolution, you're welcome")
-    video = yt.streams.get_highest_resolution()
+    proxy = random.choice(proxies)
 
-    video_path = video.download(output_path="/tmp")  # download video to temp path
-    update_progress(40)
-    update_progress_message("Downloading Audio")
-    audio_path = extract_audio(video_path)
+    ip = proxy['ip']
+    port = proxy['port']
+    username = proxy['username']
+    password = proxy['password']
 
-    update_progress(70)
-    update_progress_message("Downloading transcripts")
-    transcript = download_transcript_from_video_id(video_id, url)
+    proxies = {"http": f"https://{username}:{password}@{ip}:{port}"}
+
+    try:
+        _default_clients["ANDROID_MUSIC"] = _default_clients["WEB"]
+        yt = YouTube(url, proxies=proxies)
+        update_progress(20)
+        update_progress_message("Beginning Download - Highest resolution, you're welcome")
+        video = yt.streams.get_highest_resolution()
+
+        video_path = video.download(output_path="/tmp")  # download video to temp path
+        update_progress(40)
+        update_progress_message("Downloading Audio")
+        audio_path = extract_audio(video_path)
+
+        update_progress(70)
+        update_progress_message("Downloading transcripts")
+        transcript = download_transcript_from_video_id(video_id, url, proxies)
+    except Exception as e:
+        firebase_service.add_document(
+            'proxy_usage',
+            {
+                'video_id': video_id,
+                'proxy': proxy,
+                'status': 'FAILED',
+                'video_url': url,
+                'error': str(e),
+            }
+        )
+        raise Exception(e)
     return video_path, audio_path, transcript
 
 
@@ -84,10 +107,9 @@ def clean_captions(video_id, caption, key):
     return cleaned_captions
 
 
-def download_transcript_from_video_id(video_id, link):
-    yt = YouTube(link)
+def download_transcript_from_video_id(video_id, link, proxies):
+    yt = YouTube(link, proxies=proxies)
     try:
-        streams = yt.streams
         captions = yt.captions
         if not captions:
             print("No Captions Available for Video")

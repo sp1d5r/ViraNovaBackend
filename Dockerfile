@@ -73,7 +73,7 @@ ENV APIFY_TOKEN=${APIFY_TOKEN}
 
 # Run YUM commands with sufficient space and simplified logic
 RUN yum -y update && \
-    yum -y install gcc python3-devel mesa-libGL ffmpeg && \
+    yum -y install gcc python3-devel mesa-libGL ffmpeg git && \
     yum clean all
 
 # Copy the requirements file into the image
@@ -81,6 +81,7 @@ COPY ./serverless_backend/requirements.txt .
 
 # Install the required packages with increased timeout
 RUN pip install --timeout=100 --no-cache-dir -r requirements.txt
+RUN python -m pip install git+https://github.com/JuanBindez/pytubefix.git
 
 # Copy the rest of the application code into the image
 COPY serverless_backend/ /var/task/serverless_backend/

@@ -44,6 +44,12 @@ class FirebaseService:
         # Return the new document's reference (ID)
         return document_ref[1].id  # document_ref is a tuple of (DocumentReference, datetime), we need the ID
 
+    def get_all_documents(self, collection_name):
+        """Fetches all documents from a specified collection."""
+        collection_ref = self.db.collection(collection_name)
+        docs = collection_ref.stream()
+        return [doc.to_dict() for doc in docs]
+
     def download_file(self, blob_name, destination_file_name):
         """Downloads a file from Firebase Storage."""
         blob = self.bucket.blob(blob_name)
