@@ -3,12 +3,21 @@ from google.cloud import firestore
 from datetime import datetime, timedelta
 import requests
 import os
+import jwt
+
+
+def create_jwt_token(secret_key, payload):
+    payload['exp'] = datetime.utcnow() + timedelta(minutes=30)
+    token = jwt.encode(payload, secret_key, algorithm='HS256')
+    return token
+
 
 # Initialize Firestore client
 db = firestore.Client()
 
 # Backend service URL
 BACKEND_SERVICE_URL = os.environ.get('BACKEND_SERVICE_URL', 'https://get-fucked-buddy.com/process-task')
+JWT_SECRET_KEY = os.getenv("SECRET_KEY")
 
 
 @functions_framework.http
@@ -36,9 +45,19 @@ def check_and_process_tasks(request):
 
             if task_data.get('operation') == 'Analytics':
                 endpoint = BACKEND_SERVICE_URL + '/v1/collect-tiktok-data/' + task_data.get('shortId') + '/' + task_data.get('taskResultId')
+                payload = {
+                    'short_id':  task_data.get('shortId'),
+                    'task_id': task_data.get('taskResultId')
+                }
 
+                token = create_jwt_token(JWT_SECRET_KEY, payload)
 
-                response = requests.get(endpoint)
+                response = requests.get(
+                    endpoint,
+                    headers={
+                        'X-Auth-Token': f'Bearer {token}'
+                        }
+                    )
 
                 if response.status_code == 200:
                     # Update task status to 'Running'

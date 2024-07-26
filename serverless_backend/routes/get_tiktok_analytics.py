@@ -6,8 +6,8 @@ from serverless_backend.services.verify_video_document import parse_and_verify_s
 
 tiktok_analytics = Blueprint("tiktok_analytics", __name__)
 
-@tiktok_analytics.route("/v1/collect-tiktok-data/<short_id>", methods=['GET'])
-def collect_tiktok_data(short_id):
+@tiktok_analytics.route("/v1/collect-tiktok-data/<short_id>/<task_runner_id>", methods=['GET'])
+def collect_tiktok_data(short_id, task_runner_id):
     try:
         firebase_service = FirebaseService()
         tiktok_analytics = TikTokAnalytics()
@@ -44,15 +44,16 @@ def collect_tiktok_data(short_id):
                     }), 404
 
             task = {
-                "task_time": datetime.now(),
-                "short_id": short_id,
-                "video_id": video_id,
-                "tiktok_link": tiktok_link
+                "taskTime": datetime.now(),
+                "shortId": short_id,
+                "videoId": video_id,
+                "tiktokLink": tiktok_link,
+                "taskResultId": task_runner_id
             }
 
             tiktok_video_analytics = tiktok_analytics.get_tiktok_video_details(tiktok_link)
 
-            task['video_analytics'] = tiktok_video_analytics
+            task['videoAnalytics'] = tiktok_video_analytics
 
             analytics_id = firebase_service.add_document("analytics", task)
 
