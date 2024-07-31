@@ -70,7 +70,8 @@ def build_docker_image(repository_uri, dockerfile_path="Dockerfile"):
         "SECRET_KEY": os.getenv("SECRET_KEY"),
         "SALIENCY_BEARER_TOKEN": os.getenv("SALIENCY_BEARER_TOKEN"),
         "SALIENCY_ENDPOINT_ADDRESS": os.getenv("SALIENCY_ENDPOINT_ADDRESS"),
-        "APIFY_TOKEN": os.getenv("APIFY_TOKEN")
+        "APIFY_TOKEN": os.getenv("APIFY_TOKEN"),
+        "YOUTUBE_API_KEY": os.getenv("YOUTUBE_API_KEY")
     }
     build_args = {k: v for k, v in env_vars.items() if v is not None}
 
@@ -249,7 +250,7 @@ def create_or_update_api_gateway(lambda_function_name, api_name, stage_name, rou
     root_id = root_resource['id']
     print(f"Root resource ID found: {root_id}")
 
-    valid_methods = ['GET']  # Only allow GET methods to be set up
+    valid_methods = ['GET', 'POST']
 
     for route, methods in routes:
         path_parts = route.strip('/').split('/')
@@ -408,30 +409,30 @@ def update_lambda_permissions_and_deploy():
 # Main script execution
 def main():
     # Ensure your region is correctly set
-    print(f"Current region: {boto3.Session().region_name}")
-
-    repository_uri = create_ecr_repository(repository_name)
-    image = build_docker_image(repository_uri)
-
-    local_digest = calculate_local_image_digest(image)
-    remote_digest = image_exists_in_ecr(repository_uri)
-
-    if local_digest == remote_digest:
-        print("Local image is up-to-date with the ECR image. No need to push.")
-    else:
-        push_docker_image(repository_uri)
-
-    role_arn = get_lambda_execution_role()
-    create_or_update_lambda_function(repository_uri, lambda_function_name, role_arn)
+    # print(f"Current region: {boto3.Session().region_name}")
+    #
+    # repository_uri = create_ecr_repository(repository_name)
+    # image = build_docker_image(repository_uri)
+    #
+    # local_digest = calculate_local_image_digest(image)
+    # remote_digest = image_exists_in_ecr(repository_uri)
+    #
+    # if local_digest == remote_digest:
+    #     print("Local image is up-to-date with the ECR image. No need to push.")
+    # else:
+    #     push_docker_image(repository_uri)
+    #
+    # role_arn = get_lambda_execution_role()
+    # create_or_update_lambda_function(repository_uri, lambda_function_name, role_arn)
 
     # List routes in the Flask app
-    # from serverless_backend.app import app, list_routes
-    # routes = list_routes(app)
-    # print(routes)
-    #
-    # api_gateway_url, api_id = create_or_update_api_gateway(lambda_function_name, api_name, stage_name, routes)
-    # print(f'Your Lambda function can be called at: {api_gateway_url}')
-    # update_lambda_permissions_and_deploy()
+    from serverless_backend.app import app, list_routes
+    routes = list_routes(app)
+    print(routes)
+
+    api_gateway_url, api_id = create_or_update_api_gateway(lambda_function_name, api_name, stage_name, routes)
+    print(f'Your Lambda function can be called at: {api_gateway_url}')
+    update_lambda_permissions_and_deploy()
 
 if __name__ == '__main__':
     main()

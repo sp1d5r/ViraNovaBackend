@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify
 from serverless_backend.services.firebase import FirebaseService
 from serverless_backend.services.verify_video_document import parse_and_verify_video
-from serverless_backend.services.youtube_downloader import download_video
+from serverless_backend.services.youtube.youtube_downloader import download_video
 
 youtube_link = Blueprint("youtube_link", __name__)
 

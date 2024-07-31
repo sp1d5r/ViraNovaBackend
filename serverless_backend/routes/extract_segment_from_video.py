@@ -22,6 +22,18 @@ def crop_video_to_segment(segment_id):
         print("Getting Documents")
         segment_document = firebase_service.get_document("topical_segments", segment_id)
         video_document = firebase_service.get_document('videos', segment_document['video_id'])
+
+        if segment_document['video_segment_location']:
+            return jsonify(
+                {
+                    "status": "success",
+                    "data": {
+                        "segment_id": segment_id,
+                        "error": "Video segment already cropped"
+                    },
+                    "message": "Successfully cropped segment video"
+                }), 200
+
         update_progress = lambda x: firebase_service.update_document("topical_segments", segment_id, {'progress': x})
         update_progress_message = lambda x: firebase_service.update_document("topical_segments", segment_id, {'progress_message': x})
         firebase_service.update_document("topical_segments", segment_id, {'segment_status': "Getting Segment Video"})

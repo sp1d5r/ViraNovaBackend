@@ -71,6 +71,9 @@ ENV SALIENCY_ENDPOINT_ADDRESS=${SALIENCY_ENDPOINT_ADDRESS}
 ARG APIFY_TOKEN
 ENV APIFY_TOKEN=${APIFY_TOKEN}
 
+ARG YOUTUBE_API_KEY
+ENV YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+
 # Run YUM commands with sufficient space and simplified logic
 RUN yum -y update && \
     yum -y install gcc python3-devel mesa-libGL ffmpeg git && \

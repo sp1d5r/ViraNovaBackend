@@ -1,4 +1,4 @@
-import awsgi
+# import awsgi
 from serverless_backend.routes.generate_short_ideas import generate_short_ideas
 from serverless_backend.routes.deprecated.get_random_video import get_random_video
 from serverless_backend.routes.deprecated.get_segmentation_masks import get_segmentation_mask
@@ -14,6 +14,8 @@ from serverless_backend.routes.topical_segmentation import topical_segmentation
 from serverless_backend.routes.get_saliency_for_short import short_saliency
 from serverless_backend.routes.generate_test_audio import generate_test_audio
 from serverless_backend.routes.extract_segment_from_video import extract_segment_from_video
+from serverless_backend.routes.add_channel import add_channel
+from serverless_backend.routes.youtube_webhook import youtube_webhook
 from serverless_backend.routes.youtube_link import youtube_link
 from flask_cors import CORS
 from flask import Flask, request, jsonify, g
@@ -56,6 +58,8 @@ app.register_blueprint(short_saliency)
 app.register_blueprint(generate_test_audio)
 app.register_blueprint(extract_segment_from_video)
 app.register_blueprint(tiktok_analytics)
+app.register_blueprint(add_channel)
+app.register_blueprint(youtube_webhook)
 
 # App Before/After Hooks
 SERVER_STATUS_COLUMN_NAME = "backend_status"
@@ -187,10 +191,10 @@ def list_routes(app):
 
 
 # Lambda handler
-def lambda_handler(event, context):
-    print("The event: ", event)
-    print("The context: ", context)
-    return awsgi.response(app, event, context)
+# def lambda_handler(event, context):
+#     print("The event: ", event)
+#     print("The context: ", context)
+#     return awsgi.response(app, event, context)
 
 if __name__ == '__main__':
     print(list_routes(app))
