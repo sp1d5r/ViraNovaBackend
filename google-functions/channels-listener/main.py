@@ -87,11 +87,11 @@ def channel_document_listener(event, context):
         print(f"Channel document with new status: {new_status}")
 
         # Check if the new status is the correct one to trigger the API call
-        if new_status == 'correct_status':  # Replace 'correct_status' with the actual status you're looking for
+        if new_status == 'New Channel':  # Replace 'correct_status' with the actual status you're looking for
             api_route = "v1/get-channel-information"
             process_api_call(project_id, jwt_secret_key, ip_address, api_route, channel_id)
             subscribe_to_channel(channel_id)
         else:
             print(f"Status changed to {new_status}, but no action needed.")
     else:
-        print("Temporal Segmentation Stage triggered... No status change detected.")
+        print("Channel Listener Stage triggered... No status change detected.")
