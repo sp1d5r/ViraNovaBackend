@@ -5,7 +5,7 @@ from isodate import parse_duration
 
 class YouTubeAPIService:
     def __init__(self):
-        api_key = os.getenv('YOUTUBE_API_KEY', "AIzaSyDd7Tfga7HKEW4rc1FFTRuixXXGv1gc1WQ")
+        api_key = os.getenv('YOUTUBE_API_KEY')
         self.youtube = build('youtube', 'v3', developerKey=api_key)
 
     def get_channel_info(self, channel_id):

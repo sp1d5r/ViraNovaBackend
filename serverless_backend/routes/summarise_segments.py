@@ -1,10 +1,21 @@
 from flask import Blueprint, jsonify
+
+from serverless_backend.services.email.brevo_email_service import EmailService
 from serverless_backend.services.firebase import FirebaseService
 from serverless_backend.services.open_ai import OpenAIService
+from firebase_admin import auth
 from serverless_backend.services.verify_video_document import parse_and_verify_video
 
 summarise_segments = Blueprint("summarise_segments", __name__)
 
+
+def get_user_email(uid):
+    try:
+        user = auth.get_user(uid)
+        return user.email
+    except Exception as e:
+        print(f"Error fetching user data for UID {uid}: {str(e)}")
+        return None
 
 @summarise_segments.route("/v1/summarise-segments/<video_id>", methods=['GET'])
 def summarise_segments_for_transcript(video_id):
@@ -51,6 +62,34 @@ def summarise_segments_for_transcript(video_id):
                                                   })
 
             update_progress_message("Segments Summarised!")
+
+            email_service = EmailService()
+
+            # Email relevant people linked to the original channel
+            if video_document.get('uid'):
+                # then the video is for a specific user
+                uid = video_document.get('uid')
+                video_title = video_document.get('originalFileName')
+                user_email = get_user_email(uid)
+                if user_email:
+                    email_service.send_video_ready_notification(user_email, video_title, '')
+                else:
+                    print(f"No email found for user {uid}")
+            else:
+                # get the channel id for the user
+                if video_document.get('channelId'):
+                    channel_id = video_document.get('channelId')
+                    user_documents = firebase_service.query_documents('userstrackingchannels', 'channelId', channel_id)
+                    video_title = video_document.get('videoTitle')
+                    for user_document in user_documents:
+                        uid = user_document.get('uid')
+                        user_email = get_user_email(uid)
+                        if user_email:
+                            # send email to this user's email
+                            email_service.send_video_ready_notification(user_email, video_title, '')
+                        else:
+                            print(f"No email found for user {uid}")
+
             firebase_service.update_document("videos", video_id, {'status': 'Create TikTok Ideas'})
             return jsonify(
                 {
