@@ -1,9 +1,35 @@
+from datetime import datetime, timedelta
 from flask import Blueprint, request, abort
 import xml.etree.ElementTree as ET
 import requests
+from serverless_backend.services.youtube.youtube_api import YouTubeAPIService
+from serverless_backend.services.firebase import FirebaseService
+from firebase_admin import firestore
+
 
 youtube_webhook = Blueprint("youtube_webhook", __name__)
 
+
+def parse_duration(duration_str):
+    # Split the duration string into parts
+    parts = duration_str.split(':')
+
+    if len(parts) == 3:
+        # Format is 'hours:minutes:seconds'
+        hours, minutes, seconds = map(int, parts)
+    elif len(parts) == 2:
+        # Format is 'minutes:seconds'
+        hours = 0
+        minutes, seconds = map(int, parts)
+    elif len(parts) == 1:
+        # Format is 'seconds'
+        hours = 0
+        minutes = 0
+        seconds = int(parts[0])
+    else:
+        raise ValueError(f"Unexpected duration format: {duration_str}")
+
+    return timedelta(hours=hours, minutes=minutes, seconds=seconds)
 
 @youtube_webhook.route('/youtube-webhook', methods=['GET', 'POST'])
 def handle_youtube_webhook():
@@ -19,10 +45,65 @@ def handle_youtube_webhook():
         # Handle the actual notification
         if request.headers.get('content-type') == 'application/atom+xml':
             root = ET.fromstring(request.data)
+            published = root.find('.//{http://www.w3.org/2005/Atom}published')
+            if published is None:
+                print("Not a new video notification. Ignoring.")
+                return '', 204
+
+            publish_time = datetime.strptime(published.text, "%Y-%m-%dT%H:%M:%S%z")
+            current_time = datetime.now(publish_time.tzinfo)
+
+            # Check if the video was published within the last hour
+            if (current_time - publish_time) > timedelta(hours=1):
+                print("Video is not recent. Ignoring.")
+                return '', 204
+
             video_id = root.find('.//{http://www.youtube.com/xml/schemas/2015}videoId').text
             channel_id = root.find('.//{http://www.youtube.com/xml/schemas/2015}channelId').text
+
             print(f"New video {video_id} posted by channel {channel_id}")
-            # Here you would typically update your database or trigger other actions
-            return '', 204
+
+            # Get Video from API
+            youtube_service = YouTubeAPIService()
+            firebase_service = FirebaseService()
+            try:
+                video = youtube_service.get_video_info(video_id)
+
+                # Check video length if it's less than 1 minute ignore
+                duration = parse_duration(video['duration'])
+                if duration < timedelta(minutes=1):
+                    print(f"Video {video_id} is shorter than 1 minute. Ignoring.")
+                    return '', 204
+
+                # Add it to the videos documents with status "Loading"
+                video['status'] = "Loading..."
+                video_document_id = firebase_service.add_document(
+                    "videos",
+                    video,
+                )
+
+                # Create a new worker task to download the video in 15 minutes from now
+                current_time = datetime.utcnow()  # Get current UTC time
+                scheduled_time = current_time + timedelta(minutes=15)
+                download_task = {
+                    'status': 'Pending',
+                    'scheduledTime': scheduled_time,
+                    'operation': 'Download',
+                    'videoId': video_id,
+                    'channelId': channel_id,
+                    'videoDocumentId': video_document_id
+                }
+
+                task_id = firebase_service.add_document(
+                    "tasks",
+                    download_task,
+                )
+
+                print(f"Download task {task_id} created for video {video_id}")
+
+                return '', 204
+            except Exception as e:
+                print(f"Error processing video {video_id}: {str(e)}")
+                abort(500)
         else:
             abort(400)
