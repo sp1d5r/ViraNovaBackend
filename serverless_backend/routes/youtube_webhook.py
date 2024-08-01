@@ -1,10 +1,8 @@
 from datetime import datetime, timedelta
 from flask import Blueprint, request, abort
 import xml.etree.ElementTree as ET
-import requests
 from serverless_backend.services.youtube.youtube_api import YouTubeAPIService
 from serverless_backend.services.firebase import FirebaseService
-from firebase_admin import firestore
 
 
 youtube_webhook = Blueprint("youtube_webhook", __name__)

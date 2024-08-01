@@ -43,6 +43,29 @@ def check_and_process_tasks(request):
                 'processingStartTime': firestore.SERVER_TIMESTAMP
             })
 
+            if task_data.get('operation') == 'Download':
+                video_id = task_data.get('videoId')
+                video_document_id = task_data.get('videoDocumentId')
+
+                # Update the video document
+                video_ref = db.collection('videos').document(video_document_id)
+                video_ref.update({
+                    'status': 'Link Provided',
+                    'previousStatus': 'Started...',
+                    'uploadTimestamp': firestore.SERVER_TIMESTAMP,
+                    'progressMessage': 'Performing Download',
+                    'queuePosition': -1,
+                    'link': f'https://www.youtube.com/watch?v={video_id}'
+                })
+
+                # Mark the task as complete
+                task.reference.update({
+                    'status': 'Complete',
+                    'processingEndTime': firestore.SERVER_TIMESTAMP
+                })
+
+                processed_tasks += 1
+
             if task_data.get('operation') == 'Analytics':
                 endpoint = BACKEND_SERVICE_URL + '/v1/collect-tiktok-data/' + task_data.get('shortId') + '/' + task_data.get('taskResultId')
                 payload = {
