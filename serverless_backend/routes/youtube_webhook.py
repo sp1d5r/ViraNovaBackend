@@ -36,7 +36,8 @@ def handle_youtube_webhook():
         mode = request.args.get('hub.mode')
         challenge = request.args.get('hub.challenge')
         if mode == 'subscribe' and challenge:
-            return challenge
+            print("Found challenge, ", challenge)
+            return challenge, 200
         else:
             abort(400)
     elif request.method == 'POST':
@@ -52,7 +53,7 @@ def handle_youtube_webhook():
             current_time = datetime.now(publish_time.tzinfo)
 
             # Check if the video was published within the last hour
-            if (current_time - publish_time) > timedelta(hours=1):
+            if (current_time - publish_time) > timedelta(hours=5):
                 print("Video is not recent. Ignoring.")
                 return '', 204
 

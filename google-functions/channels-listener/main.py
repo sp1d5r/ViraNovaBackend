@@ -5,6 +5,7 @@ from google.cloud import tasks_v2
 import datetime
 import jwt
 import requests
+import json
 
 def create_jwt_token(secret_key, payload):
     payload['exp'] = datetime.datetime.utcnow() + datetime.timedelta(minutes=30)
@@ -44,6 +45,7 @@ def process_api_call(project_id, jwt_secret, ip_address, api_route, channel_id):
     create_task(client, project, queue, token, location, url)
 
 
+
 def subscribe_to_channel(channel_id):
     load_dotenv()
 
@@ -60,10 +62,29 @@ def subscribe_to_channel(channel_id):
 
     try:
         response = requests.post(HUB_URL, data=data)
+        print(f"Response status code: {response.status_code}")
+        print(f"Response headers: {json.dumps(dict(response.headers), indent=2)}")
+
+        try:
+            print(f"Response JSON: {json.dumps(response.json(), indent=2)}")
+        except json.JSONDecodeError:
+            print(f"Response text: {response.text}")
+
         if response.status_code == 202:
             print(f"Successfully subscribed to channel {channel_id}")
         else:
             print(f"Failed to subscribe to channel {channel_id}. Status code: {response.status_code}")
+
+        # Now, let's make a GET request to your webhook to see how it responds
+        webhook_response = requests.get(WEBHOOK_URL)
+        print(f"\nWebhook GET response status code: {webhook_response.status_code}")
+        print(f"Webhook GET response headers: {json.dumps(dict(webhook_response.headers), indent=2)}")
+
+        try:
+            print(f"Webhook GET response JSON: {json.dumps(webhook_response.json(), indent=2)}")
+        except json.JSONDecodeError:
+            print(f"Webhook GET response text: {webhook_response.text}")
+
     except Exception as e:
         print(f"Error subscribing to channel {channel_id}: {str(e)}")
 

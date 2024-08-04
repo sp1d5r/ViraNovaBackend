@@ -23,7 +23,7 @@ def crop_video_to_segment(segment_id):
         segment_document = firebase_service.get_document("topical_segments", segment_id)
         video_document = firebase_service.get_document('videos', segment_document['video_id'])
 
-        if segment_document['video_segment_location']:
+        if 'video_segment_location' in segment_document and segment_document['segment_document'].length >= 0:
             return jsonify(
                 {
                     "status": "success",
