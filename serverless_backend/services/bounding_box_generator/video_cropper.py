@@ -202,4 +202,3 @@ class VideoCropper:
         except Exception as e:
             print(f"Error removing temporary file {temp_file_path}: {str(e)}")
 
-# Usage example remains the same

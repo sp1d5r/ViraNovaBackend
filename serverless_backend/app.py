@@ -16,6 +16,7 @@ from serverless_backend.routes.generate_test_audio import generate_test_audio
 from serverless_backend.routes.extract_segment_from_video import extract_segment_from_video
 from serverless_backend.routes.add_channel import add_channel
 from serverless_backend.routes.youtube_webhook import youtube_webhook
+from serverless_backend.routes.generate_a_roll import generate_a_roll
 from serverless_backend.routes.youtube_link import youtube_link
 from flask_cors import CORS
 from flask import Flask, request, jsonify, g
@@ -60,6 +61,7 @@ app.register_blueprint(extract_segment_from_video)
 app.register_blueprint(tiktok_analytics)
 app.register_blueprint(add_channel)
 app.register_blueprint(youtube_webhook)
+app.register_blueprint(generate_a_roll)
 
 # App Before/After Hooks
 SERVER_STATUS_COLUMN_NAME = "backend_status"
