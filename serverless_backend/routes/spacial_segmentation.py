@@ -3,11 +3,11 @@ from datetime import datetime
 from serverless_backend.routes.generate_test_audio import generate_test_audio_for_short
 from serverless_backend.services.bounding_box_services import smooth_bounding_boxes
 from serverless_backend.services.handle_operations_from_logs import handle_operations_from_logs
+from serverless_backend.services.bounding_box_generator.bounding_boxes import BoundingBoxGenerator
 from serverless_backend.services.verify_video_document import parse_and_verify_short
 from serverless_backend.services.add_text_to_video_service import AddTextToVideoService
 from serverless_backend.services.video_audio_merger import VideoAudioMerger
 from serverless_backend.services.firebase import FirebaseService
-from serverless_backend.services.bounding_box_generator.sliding_window_box_generation import SlidingWindowBoundingBoxGenerator
 from serverless_backend.services.video_analyser.video_analyser import VideoAnalyser
 import cv2
 import tempfile
@@ -112,10 +112,10 @@ def determine_boundaries(short_id):
 
 @spacial_segmentation.route("/v1/get-bounding-boxes/<short_id>", methods=['GET'])
 def get_bounding_boxes(short_id):
+    firebase_services = FirebaseService()
     try:
-        firebase_services = FirebaseService()
         short_doc = firebase_services.get_document("shorts", short_id)
-        bounding_box_generator = SlidingWindowBoundingBoxGenerator()
+        bounding_box_generator = BoundingBoxGenerator(step_size=10)
         update_progress = lambda x: firebase_services.update_document("shorts", short_id, {"update_progress": x})
         update_message = lambda x: firebase_services.update_document("shorts", short_id,
                                                                      {"progress_message": x,
@@ -124,19 +124,14 @@ def get_bounding_boxes(short_id):
         update_message("Retrieved the document")
         firebase_services.update_document("shorts", short_id, {"pending_operation": True})
 
-
         update_message("Checking short document is correct")
         if short_doc["short_video_saliency"] is None:
             firebase_services.update_document("shorts", short_id, {"pending_operation": False})
-            return jsonify(
-                {
-                    "status": "error",
-                    "data": {
-                        "short_id": short_id,
-                        "error": "Short video does not have saliency"
-                    },
-                    "message": "Failed to find bounding boxes"
-                }), 400
+            return jsonify({
+                "status": "error",
+                "data": {"short_id": short_id, "error": "Short video does not have saliency"},
+                "message": "Failed to find bounding boxes"
+            }), 400
 
         update_message("Downloading Saliency Video...")
         update_progress(20)
@@ -150,104 +145,59 @@ def get_bounding_boxes(short_id):
         update_message("Processing video cuts...")
         update_progress(30)
 
-        update_message("Adjusted Frames")
-        skip_frames = 5
-        fixed_cuts = [i//skip_frames for i in cuts]
-        last_frame = short_doc['total_frame_count'] // skip_frames
-        all_bounding_boxes = []
-        evaluated_saliency = []
+        total_frames = short_doc['total_frame_count']
+        update_message("Generating bounding boxes")
+        update_temp_progress = lambda x: update_progress(30 + 40 * (x/100))
 
-        start_frame = 0
+        all_bounding_boxes = bounding_box_generator.generate_bounding_boxes(short_video_saliency, update_temp_progress, skip_frames=2)
 
-        update_message("Calculating Bounding Boxes")
-        update_temp_progress= lambda x, start, length: update_progress(start + (length * (x/100)))
-        for index, end_frame in enumerate(fixed_cuts):
-            bounding_boxes = bounding_box_generator.generate_bounding_boxes(short_video_saliency, start_frame, end_frame)
-            evaluate_bounding_box_success = bounding_box_generator.evaluate_saliency(short_video_saliency, bounding_boxes,
-                                                                                     start_frame, end_frame)
-            all_bounding_boxes.append(bounding_boxes)
-            evaluated_saliency.append(evaluate_bounding_box_success)
-            start_frame = end_frame + 1
-            update_temp_progress(100 * (index/len(fixed_cuts)), 30, 40)
+        update_message("Interpolating and smoothing bounding boxes within camera cuts")
+        update_progress(70)
 
-        if fixed_cuts[-1] != last_frame:
-            bounding_boxes = bounding_box_generator.generate_bounding_boxes(short_video_saliency, fixed_cuts[-1], last_frame)
-            evaluate_bounding_box_success = bounding_box_generator.evaluate_saliency(short_video_saliency, bounding_boxes,
-                                                                                     fixed_cuts[-1],
-                                                                                     last_frame)
-            all_bounding_boxes.append(bounding_boxes)
-            evaluated_saliency.append(evaluate_bounding_box_success)
-            update_progress(72)
+        interpolated_boxes = {
+            "standard_tiktok": [],
+            "two_boxes": [],
+            "reaction_box": []
+        }
 
-        print(sum([len(i) for i in evaluated_saliency]))
+        for i, cut_end in enumerate(cuts + [total_frames]):
+            cut_start = cuts[i-1] if i > 0 else 0
+            for box_type in interpolated_boxes.keys():
+                segment_boxes = all_bounding_boxes[box_type][cut_start:cut_end]
+                smooth_segment = smooth_bounding_boxes(segment_boxes, window_size=max(int(len(segment_boxes) / 5), 1))
+                interpolated_boxes[box_type].extend(smooth_segment)
 
-        update_message("Interpolating the missing positions within each segment")
-        all_interpolated_boxes = []
-        interpolated_saliency = []
+        update_message("Finalizing bounding boxes")
+        update_progress(90)
 
-        for segment_index, bounding_box_segment in enumerate(all_bounding_boxes):
-            segment_saliency = evaluated_saliency[segment_index]
-            segment_bounding_boxes = []
-            segment_saliency_values = []
-            for index, bounding_box in enumerate(bounding_box_segment):
-                if index == len(bounding_box_segment) - 1:
-                    segment_bounding_boxes.extend([bounding_box] * 5)
-                    segment_saliency_values.extend([segment_saliency[index]] * 5)
-                else:
-                    segment_bounding_boxes.append(bounding_box)
-                    segment_saliency_values.append(segment_saliency[index])
-
-                    next_bounding_box = bounding_box_segment[index + 1]
-                    current_saliency = segment_saliency[index]
-                    next_saliency_value = segment_saliency[index + 1]
-
-                    for i in range(4):
-                        new_bounding_box = [abs((i *(bounding_box[0] - next_bounding_box[0])) // 5) + bounding_box[0], bounding_box[1], bounding_box[2],
-                                            bounding_box[3]]
-                        segment_bounding_boxes.append(new_bounding_box)
-                        segment_saliency_values.append(abs(i * (current_saliency - next_saliency_value) // 5) + current_saliency)
-
-            segment_bounding_boxes = smooth_bounding_boxes(segment_bounding_boxes, window_size=max(int(len(segment_bounding_boxes) / 5), 1))
-            all_interpolated_boxes.extend(segment_bounding_boxes)
-            interpolated_saliency.extend(segment_saliency_values)
-            update_temp_progress(100 * (segment_index / len(all_bounding_boxes)), 75, 20)
-
-
-        integer_boxes = [list(i) for i in all_interpolated_boxes][:short_doc['total_frame_count'] + 1]
-        saliency_vals = [float(i) for i in interpolated_saliency][:short_doc['total_frame_count'] + 1]
-
-        print(len(integer_boxes), len(saliency_vals))
-        update_message(100)
+        update_progress(100)
         firebase_services.update_document("shorts", short_id, {"pending_operation": False})
         firebase_services.update_document(
             "shorts",
             short_id,
             {
-                "bounding_boxes": json.dumps({"boxes": integer_boxes}),
-                "saliency_values": json.dumps({"saliency_vals": saliency_vals})
+                "bounding_boxes": json.dumps(interpolated_boxes),
+                "box_type": ['standard_tiktok' for _ in range(len(interpolated_boxes['standard_tiktok']))]
             }
         )
 
-        return jsonify(
-            {
-                "status": "error",
-                "data": {
-                    "short_id": short_id,
-                    "bounding_boxes": json.dumps({"boxes": integer_boxes}),
-                    "saliency_values": json.dumps({"saliency_vals": saliency_vals})
-                },
-                "message": "Successfullly found bounding boxes"
-            }), 200
+        return jsonify({
+            "status": "success",
+            "data": {
+                "short_id": short_id,
+                "bounding_boxes": json.dumps(interpolated_boxes),
+                "box_type": ['standard_tiktok' for _ in range(len(interpolated_boxes['standard_tiktok']))]
+            },
+            "message": "Successfully found bounding boxes"
+        }), 200
+
     except Exception as e:
-        return jsonify(
-            {
-                "status": "error",
-                "data": {
-                    "short_id": short_id,
-                    "error": str(e)
-                },
-                "message": "Failed to find bounding boxes"
-            }), 400
+        firebase_services.update_document("shorts", short_id, {"pending_operation": False})
+        return jsonify({
+            "status": "error",
+            "data": {"short_id": short_id, "error": str(e)},
+            "message": "Failed to find bounding boxes"
+        }), 400
 
 
 def merge_consecutive_cuts(cuts):

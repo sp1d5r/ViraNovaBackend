@@ -1,4 +1,4 @@
-import awsgi
+# import awsgi
 from serverless_backend.routes.generate_short_ideas import generate_short_ideas
 from serverless_backend.routes.deprecated.get_random_video import get_random_video
 from serverless_backend.routes.deprecated.get_segmentation_masks import get_segmentation_mask
@@ -193,10 +193,10 @@ def list_routes(app):
 
 
 # Lambda handler
-def lambda_handler(event, context):
-    print("The event: ", event)
-    print("The context: ", context)
-    return awsgi.response(app, event, context)
+# def lambda_handler(event, context):
+#     print("The event: ", event)
+#     print("The context: ", context)
+#     return awsgi.response(app, event, context)
 
 if __name__ == '__main__':
     print(list_routes(app))
