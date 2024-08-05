@@ -78,6 +78,7 @@ def determine_boundaries(short_id):
                 "fps": fps,
                 "height": height,
                 "width": width,
+                "short_status": "Get Bounding Boxes",
             }
         )
 

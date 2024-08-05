@@ -97,7 +97,7 @@ def generate_short_video(short_id):
 
         update_message("Clean up...")
         update_progress(100)
-        firebase_service.update_document("shorts", short_id, {"pending_operation": False})
+        firebase_service.update_document("shorts", short_id, {"pending_operation": False, 'short_status': 'Generate Saliency'})
         if os.path.exists(input_path):
             os.remove(input_path)
         return jsonify(

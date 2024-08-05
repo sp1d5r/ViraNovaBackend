@@ -317,7 +317,8 @@ def predict(**inputs):
 
     firebase_service.update_document('shorts', short_id, {
         "short_video_saliency": destination_blob_name,
-        "pending_operations": False
+        "pending_operations": False,
+        "short_status": 'Determine Video Boundaries'
     })
 
     return {"blob_location": destination_blob_name}
