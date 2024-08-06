@@ -101,7 +101,8 @@ def temporal_segmentation(event, context):
             "Generate Saliency": "v1/get_saliency_for_short",
             "Determine Video Boundaries": "v1/determine-boundaries",
             "Get Bounding Boxes": "v1/get-bounding-boxes",
-            "Generate A-Roll": "/v1/generate-a-roll/",
+            "Generate A-Roll": "v1/generate-a-roll",
+            "Generate B-Roll": "v1/generate-b-roll",
             "Preview Video": "v1/create-cropped-video"
         }
 
