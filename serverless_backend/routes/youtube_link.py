@@ -31,6 +31,19 @@ def begin_youtube_link_download(video_id: str):
                 print("Audio Path", temp_audio_path)
                 print("Transcript", transcript)
 
+                if transcript is None or transcript.empty:
+                    update_progress_message(
+                        "This video doesn't have a transcript - without that we cannot perform segmentation... (yet)")
+
+                    return jsonify(
+                        {
+                            "status": "success",
+                            "data": {
+                                "video_id": video_id,
+                            },
+                            "message": "Failed downloaded youtube video"
+                        }), 400
+
                 video_filename = temp_video_path.split('/')[-1]
                 audio_filename = temp_audio_path.split('/')[-1]
 
@@ -38,24 +51,27 @@ def begin_youtube_link_download(video_id: str):
                     "originalFileName": video_filename
                 })
 
+                # Temporarily disable upload
                 video_blob_destination = f"videos-raw/{video_id}/{video_filename}"
                 firebase_service.upload_file_from_temp(temp_video_path, video_blob_destination)
 
                 audio_blob_destination = f"audio/{video_id}/{audio_filename}"
                 firebase_service.upload_file_from_temp(temp_audio_path, audio_blob_destination)
 
-                # Upload transcript and update document with path references
-                update_progress_message("Uploading to transcript")
-                update_progress(80)
-                transcript_data, word_data = firebase_service.upload_youtube_transcription_to_firestore(transcript, video_id, update_progress)
-
-                print("Transcript Data: ", transcript_data)
-                print("Word Data: ", word_data)
-
                 firebase_service.update_document('videos', video_id, {
                     "videoPath": video_blob_destination,
                     "audio_path": audio_blob_destination
                 })
+
+                # Upload transcript and update document with path references
+                update_progress_message("Uploading to transcript")
+                update_progress(80)
+                transcript_data = firebase_service.upload_youtube_transcription_to_firestore(transcript, video_id, update_progress)
+
+                print("Transcript Data: ", transcript_data)
+                # print("Word Data: ", word_data)
+
+
 
                 firebase_service.update_document('videos', video_id,
                                                  {'progressMessage': "Video data downloaded"})

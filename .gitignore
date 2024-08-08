@@ -12,3 +12,5 @@ k8s/*
 *.tar.gz
 zappa_settings.json
 *.db
+*/tokenoauth.json
+tokenoauth.json

@@ -85,6 +85,9 @@ RUN yum -y update && \
 # Copy the requirements file into the image
 COPY ./serverless_backend/requirements.txt .
 
+# Copy the OAuthTokenFile into the working directory
+COPY tokenoauth.json /var/task/tokenoauth.json
+
 # Install the required packages with increased timeout
 RUN pip install --timeout=100 --no-cache-dir -r requirements.txt
 RUN python -m pip install git+https://github.com/JuanBindez/pytubefix.git

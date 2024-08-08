@@ -287,95 +287,26 @@ def create_cropped_video(short_id):
         firebase_service.update_document("shorts", short_id, {"pending_operation": True})
 
         update_progress(20)
-        if not "short_clipped_video" in short_doc.keys():
-            update_message("Clipped video doesn't exist")
+        if not "short_b_roll" in short_doc.keys() and not "short_a_roll" in short_doc.key():
+            update_message("B Roll Does Not Exist!")
             firebase_service.update_document("shorts", short_id, {"pending_operation": False})
             return jsonify(
                 {
                     "status": "error",
                     "data": {
                         "short_id": short_id,
-                        "error": "No clipped video exists"
+                        "error": "No b roll combined found"
                     },
                     "message": "Failed to preview video"
                 }), 400
-        update_message("Accessed the short document")
 
-        clipped_location = short_doc['short_clipped_video']
+        update_message("Accessed the short document")
+        clipped_footage = short_doc.get("short_b_roll", short_doc.get("short_a_roll", ""))
         update_message("Download the clipped video")
-        temp_clipped_file = firebase_service.download_file_to_temp(clipped_location)
+        output_path = firebase_service.download_file_to_temp(clipped_footage)
         update_progress(30)
 
-        if not "bounding_boxes" in short_doc.keys():
-            update_message("Bounding boxes do not exist")
-            firebase_service.update_document("shorts", short_id, {"pending_operation": False})
-            return jsonify(
-                {
-                    "status": "error",
-                    "data": {
-                        "short_id": short_id,
-                        "error": "No bounding boxes on short"
-                    },
-                    "message": "Failed to preview video"
-                }), 400
-
-        bounding_boxes = json.loads(short_doc['bounding_boxes'])['boxes']
-        _, output_path = tempfile.mkstemp(suffix='.mp4')
-
-        cap = cv2.VideoCapture(temp_clipped_file)
-        update_message("Tried to open clipped video")
-        if not cap.isOpened():
-            update_message("Error: Could not open video.")
-            firebase_service.update_document("shorts", short_id, {"pending_operation": False})
-            return jsonify(
-                {
-                    "status": "error",
-                    "data": {
-                        "short_id": short_id,
-                        "error": "Unable to open clipped video"
-                    },
-                    "message": "Failed to preview video"
-                }), 400
-
-
         # Get video properties
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Define the codec
-
-        update_message("Loading in bounding boxes")
-
-        # Assuming all bounding boxes have the same size, we use the first one to set the output video size
-        if bounding_boxes:
-            _, _, width, height = bounding_boxes[0]
-            # Create a video writer for the output video with the size of the bounding box
-            out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-        else:
-            update_message("Error: Bounding box list is empty.")
-            firebase_service.update_document("shorts", short_id, {"pending_operation": False})
-            exit()
-
-        frame_index = 0
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break  # Break the loop if there are no frames left to read
-
-            if frame_index < len(bounding_boxes):
-                x, y, w, h = bounding_boxes[frame_index]
-                # Crop the frame using the bounding box
-                cropped_frame = frame[y:y + h, x:x + w]
-                out.write(cropped_frame)
-            else:
-                print(f"No bounding box for frame {frame_index}, skipping.")
-
-            frame_index += 1
-            update_temp_progress((frame_index/total_frames) * 100 ,30,30)
-
-        # Release everything when done
-        cap.release()
-        out.release()
-
         COLOUR = (13, 255, 0)
         SHADOW_COLOUR = (192, 255, 189)
         LOGO = "ViraNova"
@@ -492,14 +423,14 @@ def create_cropped_video(short_id):
 
         # Create an output path
         update_message("Added output path to short location")
-        destination_blob_name = "finished-short/" + short_id + "-" + "".join(clipped_location.split("/")[1:])
+        destination_blob_name = "finished-short/" + short_id + "-" + "".join(clipped_footage.split("/")[1:])
         firebase_service.upload_file_from_temp(output_path, destination_blob_name)
 
-        firebase_service.update_document("shorts", short_id, {"finished_short_location": destination_blob_name, "finished_short_fps": fps})
+        firebase_service.update_document("shorts", short_id, {"finished_short_location": destination_blob_name, "finished_short_fps": short_doc['fps']})
 
         update_message("Finished Video!")
         firebase_service.update_document("shorts", short_id, {"pending_operation": False})
-        os.remove(temp_clipped_file)
+
 
         return jsonify(
             {
@@ -507,7 +438,7 @@ def create_cropped_video(short_id):
                 "data": {
                     "short_id": short_id,
                     "finished_short_location": destination_blob_name,
-                    "finished_short_fps": fps
+                    "finished_short_fps": short_doc['fps']
                 },
                 "message": "Successfully previewed final video"
             }), 200

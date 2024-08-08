@@ -82,6 +82,9 @@ RUN yum -y update && \
     yum -y install gcc python3-devel mesa-libGL ffmpeg git && \
     yum clean all
 
+# Copy the OAuthTokenFile into the working directory
+COPY tokenoauth.json /var/task/tokenoauth.json
+
 # Copy the requirements file into the image
 COPY ./serverless_backend/requirements.txt .
 

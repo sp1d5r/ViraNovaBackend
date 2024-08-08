@@ -82,7 +82,7 @@ def generate_b_roll_short(short_id):
         update_message("Complete!")
 
         update_message("Uploading new video...")
-        video_with_b_roll_blob = "/shorts/" + short_id + "/b_roll.mp4"
+        video_with_b_roll_blob = f"shorts/{short_id}/b_roll.mp4"
         firebase_services.upload_file_from_temp(edited_video_path, video_with_b_roll_blob)
         update_message("Finished!")
 
@@ -101,7 +101,7 @@ def generate_b_roll_short(short_id):
                     "short_id": short_id,
                     "video_with_b_roll": video_with_b_roll_blob
                 },
-                "message": "Failed to generate b-roll"
+                "message": "Successfully to generate b-roll"
             }), 400
 
     except Exception as e:

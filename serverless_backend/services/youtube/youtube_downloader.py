@@ -4,6 +4,7 @@ import subprocess
 from pytubefix.innertube import _default_clients
 import random
 from serverless_backend.services.firebase import FirebaseService
+import os
 
 
 def download_video(video_id, url, update_progress, update_progress_message):
@@ -22,7 +23,12 @@ def download_video(video_id, url, update_progress, update_progress_message):
 
     try:
         _default_clients["ANDROID_MUSIC"] = _default_clients["WEB"]
-        yt = YouTube(url, proxies=proxies)
+
+        # current files location using os
+        cwd = os.getcwd()
+        token_file = cwd + "/tokenoauth.json"
+
+        yt = YouTube(url, proxies=proxies, use_oauth=True, allow_oauth_cache=True, token_file=token_file)
         update_progress(20)
         update_progress_message("Beginning Download - Highest resolution, you're welcome")
         video = yt.streams.get_highest_resolution()
@@ -34,7 +40,9 @@ def download_video(video_id, url, update_progress, update_progress_message):
 
         update_progress(70)
         update_progress_message("Downloading transcripts")
-        transcript = download_transcript_from_video_id(video_id, url, proxies)
+        print(yt.captions)
+        transcript = download_transcript_from_video_id(yt.captions, video_id)
+
     except Exception as e:
         firebase_service.add_document(
             'proxy_usage',
@@ -107,10 +115,8 @@ def clean_captions(video_id, caption, key):
     return cleaned_captions
 
 
-def download_transcript_from_video_id(video_id, link, proxies):
-    yt = YouTube(link, proxies=proxies)
+def download_transcript_from_video_id(captions, video_id):
     try:
-        captions = yt.captions
         if not captions:
             print("No Captions Available for Video")
             return None

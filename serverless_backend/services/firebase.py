@@ -163,55 +163,54 @@ class FirebaseService:
         return transcripts_list, words_list
 
     def upload_youtube_transcription_to_firestore(self, transcribed_df, video_id, update_progress):
+        # Delete previous transcripts
         previous_transcripts = self.query_documents("transcriptions", "video_id", video_id)
-        print("Previous Transcripts", previous_transcripts)
-        if previous_transcripts and len(previous_transcripts) > 0:
-            for index, transcript in enumerate(previous_transcripts):
-                update_progress((index / len(previous_transcripts)) * 100)
-                self.delete_document('transcriptions', transcript['id'])
+        if previous_transcripts:
+            doc_ids = [transcript['id'] for transcript in previous_transcripts]
+            self.batch_delete_documents('transcriptions', doc_ids)
+            update_progress(50)  # 50% progress after deletion
 
         transcriptions_collection = self.db.collection('transcriptions')
-        transcripts_list = []
-        words_list = []
 
         # Group by 'group_index' to handle multiple words belonging to the same transcript
-        largest_group_index = max(list(transcribed_df['group_index']))
         grouped_df = transcribed_df.groupby('group_index')
-        index = 0
-        # Iterate through each group produced by the groupby operation
-        for group_index, group in grouped_df:
-            update_progress(index / len(grouped_df) * 100)
+        total_groups = len(grouped_df)
+
+        # Prepare batches for efficient writing
+        batch = self.db.batch()
+        batch_count = 0
+        max_batch_size = 500  # Firestore allows up to 500 operations per batch
+
+        for index, (group_index, group) in enumerate(grouped_df):
+            update_progress(50 + (index / total_groups * 50))  # Last 50% for uploading
+
             transcript_id = f"{video_id}_{group_index}"
+            transcript_doc_ref = transcriptions_collection.document(transcript_id)
 
             transcript_data = {
-                'transcript': ' '.join(group['word'].tolist()),  # Combine words into a single transcript string
-                'confidence': float(group['confidence'].mean()),  # Average confidence for the group
+                'transcript': ' '.join(group['word'].tolist()),
+                'confidence': float(group['confidence'].mean()),
                 'video_id': video_id,
-                'language_code': group['language'].iloc[0],  # Assuming all entries in a group have the same language
-                'earliest_start_time': float(group['start_time'].min()),  # Earliest start time in the group
-                'latest_end_time': float(group['end_time'].max()),  # Latest end time in the group
-                'index': group_index  # index of the group
+                'language_code': group['language'].iloc[0],
+                'earliest_start_time': float(group['start_time'].min()),
+                'latest_end_time': float(group['end_time'].max()),
+                'index': group_index,
+                'words': group.to_dict('records')  # Store all words data directly in the transcript document
             }
 
-            # Create a new document for this transcript in Firestore
-            transcript_doc_ref = transcriptions_collection.document(transcript_id)
-            transcript_doc_ref.set(transcript_data)
+            batch.set(transcript_doc_ref, transcript_data)
+            batch_count += 1
 
-            # Now add words to the words sub-collection
-            words_collection_ref = transcript_doc_ref.collection('words')
-            for _, word_row in group.iterrows():
-                word_data = {
-                    'word': word_row['word'],
-                    'start_time': float(word_row['start_time']),
-                    'end_time': float(word_row['end_time']),
-                    'confidence': float(word_row['confidence']),
-                    'index': int(word_row.name)  # Using the DataFrame index as the word index
-                }
-                words_collection_ref.add(word_data)
-                words_list.append(word_data)
-            transcripts_list.append(transcript_data)
-            index += 1
-        return transcripts_list, words_list
+            if batch_count >= max_batch_size:
+                batch.commit()
+                batch = self.db.batch()
+                batch_count = 0
+
+        # Commit any remaining operations
+        if batch_count > 0:
+            batch.commit()
+
+        return self.query_transcripts_by_video_id(video_id)
 
     def query_transcripts_by_video_id(self, video_id):
         # New method to query transcripts by video_id and sort by index
@@ -222,6 +221,83 @@ class FirebaseService:
 
         return [transcript.to_dict() for transcript in transcripts]
 
+    def batch_delete_documents(self, collection_name, document_ids):
+        """Deletes multiple documents in batches."""
+        batch = self.db.batch()
+        batch_count = 0
+        max_batch_size = 500  # Firestore allows up to 500 operations per batch
+
+        for doc_id in document_ids:
+            doc_ref = self.db.collection(collection_name).document(doc_id)
+            batch.delete(doc_ref)
+            batch_count += 1
+
+            if batch_count >= max_batch_size:
+                batch.commit()
+                batch = self.db.batch()
+                batch_count = 0
+
+        # Commit any remaining operations
+        if batch_count > 0:
+            batch.commit()
+
+    def batch_add_documents(self, collection_name, documents):
+        """
+        Adds multiple documents to a collection in batches.
+
+        :param collection_name: Name of the collection to add documents to
+        :param documents: List of dictionaries, each representing a document to add
+        """
+        batch = self.db.batch()
+        batch_size = 0
+        max_batch_size = 500  # Firestore allows up to 500 operations per batch
+
+        for doc in documents:
+            # Create a reference to a new document with an auto-generated ID
+            doc_ref = self.db.collection(collection_name).document()
+            batch.set(doc_ref, doc)
+            batch_size += 1
+
+            if batch_size >= max_batch_size:
+                # Commit the batch
+                batch.commit()
+                # Start a new batch
+                batch = self.db.batch()
+                batch_size = 0
+
+        # Commit any remaining operations
+        if batch_size > 0:
+            batch.commit()
+
+    def delete_document(self, collection_name, document_id):
+        """Deletes a specific document and its subcollections."""
+        doc_ref = self.db.collection(collection_name).document(document_id)
+        doc = doc_ref.get()
+        if doc.exists:
+            # Delete subcollections first
+            # Assuming we know the names of subcollections or we retrieve them dynamically
+            subcollections = doc.reference.collections()  # List subcollections
+            for subcollection in subcollections:
+                self.delete_collection(subcollection, batch_size=500)
+
+            # Now delete the document
+            doc_ref.delete()
+            return f"Document {document_id} in {collection_name} deleted successfully."
+        else:
+            return f"Document {document_id} in {collection_name} does not exist."
+
+    def delete_collection(self, coll_ref, batch_size):
+        """Deletes a collection in batches."""
+        docs = coll_ref.limit(batch_size).stream()
+        deleted = 0
+
+        for doc in docs:
+            doc.reference.delete()
+            deleted += 1
+
+        if deleted >= batch_size:
+            self.delete_collection(coll_ref, batch_size)
+
     def query_transcripts_by_video_id_with_words(self, video_id):
         # Query transcripts by video_id and sort by index
         transcripts = self.db.collection("transcriptions") \
@@ -229,26 +305,9 @@ class FirebaseService:
             .order_by("index") \
             .get()
 
-        # Initialize a list to hold all transcripts with their words
-        transcripts_with_words = []
-
-        # Iterate over each transcript document
-        for transcript in transcripts:
-            # Convert the transcript document to a dictionary
-            transcript_dict = transcript.to_dict()
-
-            # Fetch words for the current transcript from the "word" sub-collection
-            words = self.db.collection("transcriptions") \
-                .document(transcript.id) \
-                .collection("words") \
-                .order_by("index") \
-                .get()
-
-            # Add the words to the transcript dictionary
-            transcript_dict["words"] = [word.to_dict() for word in words]
-
-            # Append the enriched transcript to the list
-            transcripts_with_words.append(transcript_dict)
+        # Convert the documents to dictionaries
+        # The words are now directly included in each transcript document
+        transcripts_with_words = [transcript.to_dict() for transcript in transcripts]
 
         return transcripts_with_words
 
@@ -293,21 +352,3 @@ class FirebaseService:
 
         if deleted >= batch_size:
             return self.delete_collection(coll_ref, batch_size)
-
-
-    def delete_document(self, collection_name, document_id):
-        """Deletes a specific document and its subcollections."""
-        doc_ref = self.db.collection(collection_name).document(document_id)
-        doc = doc_ref.get()
-        if doc.exists:
-            # Delete subcollections first
-            # Assuming we know the names of subcollections or we retrieve them dynamically
-            subcollections = doc.reference.collections()  # List subcollections
-            for subcollection in subcollections:
-                self.delete_collection(subcollection, batch_size=10)
-
-            # Now delete the document
-            doc_ref.delete()
-            return f"Document {document_id} in {collection_name} deleted successfully."
-        else:
-            return f"Document {document_id} in {collection_name} does not exist."
