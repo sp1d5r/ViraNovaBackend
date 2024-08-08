@@ -6,9 +6,11 @@ from firebase_admin import firestore
 from firebase_admin import storage
 import base64
 import os
+from datetime import datetime, timedelta
 import json
 from dotenv import load_dotenv
 from io import BytesIO
+import pandas as pd
 load_dotenv()
 
 
@@ -95,6 +97,25 @@ class FirebaseService:
         blob.upload_from_string(file_bytes, content_type='audio/mp4')
         return f"File {blob_name} uploaded."
 
+    def get_signed_url(self, blob_name, expiration=3600):
+        """
+        Generate a signed URL for a file in Firebase Storage.
+
+        :param blob_name: The name of the blob in Firebase Storage
+        :param expiration: The number of seconds until the signed URL expires (default is 1 hour)
+        :return: The signed URL as a string
+        """
+        blob = self.bucket.blob(blob_name)
+
+        # Generate a signed URL that expires after the specified time
+        url = blob.generate_signed_url(
+            version="v4",
+            expiration=datetime.utcnow() + timedelta(seconds=expiration),
+            method="GET",
+        )
+
+        return url
+
     def upload_transcription_to_firestore(self, transcribed_content, video_id, update_progress):
         previous_transcripts = self.query_documents("transcriptions", "video_id", video_id)
 
@@ -161,6 +182,61 @@ class FirebaseService:
             transcripts_list.append(transcript_data)
 
         return transcripts_list, words_list
+
+    def upload_deepgram_transcription_to_firestore(self, transcription_data, video_id, update_progress):
+        # Delete previous transcripts
+        previous_transcripts = self.query_documents("transcriptions", "video_id", video_id)
+        if previous_transcripts:
+            doc_ids = [transcript['id'] for transcript in previous_transcripts]
+            self.batch_delete_documents('transcriptions', doc_ids)
+            update_progress(50)  # 50% progress after deletion
+
+        transcriptions_collection = self.db.collection('transcriptions')
+
+        # Convert words to DataFrame for easier processing
+        words_df = pd.DataFrame(transcription_data['words'])
+
+        # Group words into utterances (you can adjust the grouping logic as needed)
+        words_df['group_index'] = words_df.index // 10  # Group every 10 words, adjust as needed
+
+        grouped_df = words_df.groupby('group_index')
+        total_groups = len(grouped_df)
+
+        # Prepare batches for efficient writing
+        batch = self.db.batch()
+        batch_count = 0
+        max_batch_size = 500  # Firestore allows up to 500 operations per batch
+
+        for index, (group_index, group) in enumerate(grouped_df):
+            update_progress(50 + (index / total_groups * 50))  # Last 50% for uploading
+
+            transcript_id = f"{video_id}_{group_index}"
+            transcript_doc_ref = transcriptions_collection.document(transcript_id)
+
+            transcript_data = {
+                'transcript': ' '.join(group['word'].tolist()),
+                'confidence': float(group['confidence'].mean()),
+                'video_id': video_id,
+                'language_code': group['language'].iloc[0],
+                'earliest_start_time': float(group['start_time'].min()),
+                'latest_end_time': float(group['end_time'].max()),
+                'index': group_index,
+                'words': group.to_dict('records')
+            }
+
+            batch.set(transcript_doc_ref, transcript_data)
+            batch_count += 1
+
+            if batch_count >= max_batch_size:
+                batch.commit()
+                batch = self.db.batch()
+                batch_count = 0
+
+        # Commit any remaining operations
+        if batch_count > 0:
+            batch.commit()
+
+        return self.query_transcripts_by_video_id(video_id)
 
     def upload_youtube_transcription_to_firestore(self, transcribed_df, video_id, update_progress):
         # Delete previous transcripts

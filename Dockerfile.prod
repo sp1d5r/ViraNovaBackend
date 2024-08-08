@@ -77,6 +77,9 @@ ENV YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
 ARG BREVO_API_KEY
 ENV BREVO_API_KEY=${BREVO_API_KEY}
 
+ARG DEEP_GRAM_API_KEY
+ENV DEEP_GRAM_API_KEY=${DEEP_GRAM_API_KEY}
+
 # Update YUM and install required system dependencies including ffmpeg
 RUN yum -y update && \
     yum -y install gcc python3-devel mesa-libGL ffmpeg git && \

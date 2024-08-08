@@ -68,14 +68,3 @@ class EmailService:
         logger.info(f"Sending video ready notification for '{video_title}' to {to_email}")
         return self.send_email_template(to_email, template_id, template_params, subject)
 
-
-# Usage example
-if __name__ == "__main__":
-    email_service = EmailService()
-
-    # Example of sending a video ready notification
-    print(email_service.send_video_ready_notification(
-        "elijahahmad03@gmail.com",
-        "My Awesome Video",
-        "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-    ))

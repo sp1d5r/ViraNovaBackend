@@ -19,6 +19,7 @@ from serverless_backend.routes.youtube_webhook import youtube_webhook
 from serverless_backend.routes.generate_a_roll import generate_a_roll
 from serverless_backend.routes.generate_b_roll import generate_b_roll
 from serverless_backend.routes.youtube_link import youtube_link
+from serverless_backend.routes.transcribe_video import transcribe
 from flask_cors import CORS
 from flask import Flask, request, jsonify, g
 import os
@@ -64,6 +65,7 @@ app.register_blueprint(add_channel)
 app.register_blueprint(youtube_webhook)
 app.register_blueprint(generate_a_roll)
 app.register_blueprint(generate_b_roll)
+app.register_blueprint(transcribe)
 
 # App Before/After Hooks
 SERVER_STATUS_COLUMN_NAME = "backend_status"

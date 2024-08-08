@@ -41,6 +41,7 @@ cryptography==42.0.2
 dataclasses-json==0.6.5
 debugpy==1.8.2
 decorator==4.4.2
+deepgram-sdk
 defusedxml==0.7.1
 distro==1.9.0
 durationpy==0.6
