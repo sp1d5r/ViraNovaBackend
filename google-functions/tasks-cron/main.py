@@ -52,6 +52,7 @@ def check_and_process_tasks(request):
                 video_ref.update({
                     'status': 'Link Provided',
                     'previousStatus': 'Started...',
+                    'processingProgress': 0,
                     'uploadTimestamp': firestore.SERVER_TIMESTAMP,
                     'progressMessage': 'Performing Download',
                     'queuePosition': -1,

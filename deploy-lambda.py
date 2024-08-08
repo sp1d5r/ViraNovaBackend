@@ -1,5 +1,6 @@
 import boto3
 import botocore
+from botocore.exceptions import ClientError
 import docker
 import time
 import json
@@ -344,28 +345,30 @@ def remove_existing_permissions():
 
 
 def add_permission_to_lambda(api_id):
-    source_arn = f'arn:aws:execute-api:{aws_region}:{account_id}:{api_id}/*/GET/*'
-
-    try:
-        lambda_client.add_permission(
-            FunctionName=lambda_function_name,
-            StatementId='apigateway-access',
-            Action='lambda:InvokeFunction',
-            Principal='apigateway.amazonaws.com',
-            SourceArn=source_arn
-        )
-        print(f'Added permission for API Gateway to invoke Lambda function {lambda_function_name}')
-    except botocore.exceptions.ClientError as e:
-        print(f"Error adding permission: {e}")
-        raise
-
+    for method in ['GET', 'POST']:  # Add other methods if needed
+        source_arn = f'arn:aws:execute-api:{aws_region}:{account_id}:{api_id}/*/{method}/*'
+        try:
+            lambda_client.add_permission(
+                FunctionName=lambda_function_name,
+                StatementId=f'apigateway-access-{method.lower()}',
+                Action='lambda:InvokeFunction',
+                Principal='apigateway.amazonaws.com',
+                SourceArn=source_arn
+            )
+            print(f'Added permission for API Gateway to invoke Lambda function {lambda_function_name} for {method} requests')
+        except botocore.exceptions.ClientError as e:
+            if e.response['Error']['Code'] == 'ResourceConflictException':
+                print(f'Permission already exists for {method} requests')
+            else:
+                print(f"Error adding permission for {method} requests: {e}")
+                raise
 
 def verify_api_gateway_integration(api_id, lambda_function_name):
     resources = apigateway_client.get_resources(restApiId=api_id)
     for resource in resources['items']:
         if 'resourceMethods' in resource:
-            for method in resource['resourceMethods']:
-                if method == 'GET':
+            for method in ['GET', 'POST']:  # Add other methods if needed
+                if method in resource['resourceMethods']:
                     integration = apigateway_client.get_integration(
                         restApiId=api_id,
                         resourceId=resource['id'],
@@ -385,18 +388,27 @@ def verify_api_gateway_integration(api_id, lambda_function_name):
                         print(f"Updated integration for {method} method on resource {resource['path']}")
 
 
-def deploy_api_gateway(api_id, stage_name):
-    try:
-        deployment_response = apigateway_client.create_deployment(
-            restApiId=api_id,
-            stageName=stage_name
-        )
-        print(f'Deployed API to stage: {stage_name}')
-    except botocore.exceptions.ClientError as e:
-        print(f"Error deploying API: {e}")
-        raise
-
-
+def deploy_api_gateway(api_id, stage_name, max_retries=5, initial_delay=1):
+    retries = 0
+    while retries < max_retries:
+        try:
+            deployment_response = apigateway_client.create_deployment(
+                restApiId=api_id,
+                stageName=stage_name
+            )
+            print(f'Deployed API to stage: {stage_name}')
+            return deployment_response
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'TooManyRequestsException':
+                wait_time = (2 ** retries) * initial_delay + random.uniform(0, 1)
+                print(f"Rate limited. Retrying in {wait_time:.2f} seconds...")
+                time.sleep(wait_time)
+                retries += 1
+            else:
+                print(f"Error deploying API: {e}")
+                raise
+    print(f"Failed to deploy API after {max_retries} attempts")
+    raise Exception("Max retries exceeded for API deployment")
 def update_lambda_permissions_and_deploy():
     api_id = get_existing_api_id(api_name)
     if api_id:
@@ -406,6 +418,8 @@ def update_lambda_permissions_and_deploy():
         deploy_api_gateway(api_id, stage_name)
     else:
         print(f"API Gateway {api_name} not found.")
+
+
 
 # Main script execution
 def main():

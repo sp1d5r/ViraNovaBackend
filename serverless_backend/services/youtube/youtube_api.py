@@ -55,6 +55,7 @@ class YouTubeAPIService:
                     'madeForKids': channel_data['status'].get('madeForKids'),
                     'selfDeclaredMadeForKids': channel_data['status'].get('selfDeclaredMadeForKids'),
                     'status': f"Last Collected on {current_time}",
+
                 }
             else:
                 return None
@@ -125,6 +126,8 @@ class YouTubeAPIService:
                         'commentCount': int(statistics.get('commentCount', 0)),
                     },
                     'thumbnails': thumbnails,
+                    'previousStatus': 'Signalled!',
+                    'progress': 0,
                 }
             else:
                 return None

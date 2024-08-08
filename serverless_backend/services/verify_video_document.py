@@ -8,7 +8,6 @@ def parse_and_verify_video(video_document: dict) -> (bool, str):
         "processingProgress": int,
         "queuePosition": int,
         "status": str,
-        "uid": str,
         "uploadTimestamp": int,
         # "videoPath": str,
     }
