@@ -4,6 +4,7 @@ from serverless_backend.routes.generate_test_audio import generate_test_audio_fo
 from serverless_backend.services.bounding_box_services import smooth_bounding_boxes
 from serverless_backend.services.handle_operations_from_logs import handle_operations_from_logs
 from serverless_backend.services.bounding_box_generator.bounding_boxes import BoundingBoxGenerator
+from serverless_backend.services.parse_segment_words import parse_segment_words
 from serverless_backend.services.verify_video_document import parse_and_verify_short
 from serverless_backend.services.add_text_to_video_service import AddTextToVideoService
 from serverless_backend.services.video_audio_merger import VideoAudioMerger
@@ -287,7 +288,7 @@ def create_cropped_video(short_id):
         firebase_service.update_document("shorts", short_id, {"pending_operation": True})
 
         update_progress(20)
-        if not "short_b_roll" in short_doc.keys() and not "short_a_roll" in short_doc.key():
+        if not "short_b_roll" in short_doc.keys() and not "short_a_roll" in short_doc.keys():
             update_message("B Roll Does Not Exist!")
             firebase_service.update_document("shorts", short_id, {"pending_operation": False})
             return jsonify(
@@ -300,16 +301,19 @@ def create_cropped_video(short_id):
                     "message": "Failed to preview video"
                 }), 400
 
+
         update_message("Accessed the short document")
         clipped_footage = short_doc.get("short_b_roll", short_doc.get("short_a_roll", ""))
         update_message("Download the clipped video")
         output_path = firebase_service.download_file_to_temp(clipped_footage)
         update_progress(30)
 
+
         # Get video properties
         COLOUR = (13, 255, 0)
         SHADOW_COLOUR = (192, 255, 189)
         LOGO = "ViraNova"
+
 
         if 'short_title_top' in short_doc.keys():
             update_message("Added top text")
@@ -332,12 +336,22 @@ def create_cropped_video(short_id):
                                                      color=COLOUR, shadow_color=(0,0,0),
                                                      shadow_offset=(1, 1), outline=False, outline_color=(0, 0, 0),
                                                      outline_thickness=1, offset=(0, 0.1))
-
         add_transcript = True
         if add_transcript:
             segment_document = firebase_service.get_document('topical_segments', short_doc['segment_id'])
 
-            segment_document_words = ast.literal_eval(segment_document['words'])
+            try:
+                segment_document_words = parse_segment_words(segment_document)
+            except ValueError as e:
+                update_message(f"Error parsing segment words: {str(e)}")
+                firebase_service.update_document("shorts", short_id, {"pending_operation": False})
+                return jsonify({
+                    "status": "error",
+                    "data": {"short_id": short_id, "error": str(e)},
+                    "message": "Failed to parse segment words"
+                }), 400
+
+
             update_message("Read Segment Words")
             update_progress(75)
             logs = short_doc['logs']

@@ -28,6 +28,8 @@ def download_video(video_id, url, update_progress, update_progress_message):
         cwd = os.getcwd()
         token_file = cwd + "/tokenoauth.json"
 
+        print('Token File: ', token_file)
+        print('Token File exists: ', os.path.isfile(token_file))
         yt = YouTube(url, proxies=proxies, use_oauth=True, allow_oauth_cache=True, token_file=token_file)
         update_progress(20)
         update_progress_message("Beginning Download - Highest resolution, you're welcome")

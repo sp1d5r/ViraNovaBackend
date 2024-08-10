@@ -73,7 +73,8 @@ def build_docker_image(repository_uri, dockerfile_path="Dockerfile"):
         "SALIENCY_ENDPOINT_ADDRESS": os.getenv("SALIENCY_ENDPOINT_ADDRESS"),
         "APIFY_TOKEN": os.getenv("APIFY_TOKEN"),
         "YOUTUBE_API_KEY": os.getenv("YOUTUBE_API_KEY"),
-        "BREVO_API_KEY": os.getenv("BREVO_API_KEY")
+        "BREVO_API_KEY": os.getenv("BREVO_API_KEY"),
+        "DEEP_GRAM_API_KEY": os.getenv("DEEP_GRAM_API_KEY")
     }
     build_args = {k: v for k, v in env_vars.items() if v is not None}
 

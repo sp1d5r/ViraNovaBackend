@@ -198,7 +198,7 @@ def list_routes(app):
     return output
 
 
-# Lambda handler
+# # Lambda handler
 def lambda_handler(event, context):
     print("The event: ", event)
     print("The context: ", context)

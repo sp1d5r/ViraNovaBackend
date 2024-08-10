@@ -5,6 +5,7 @@ from datetime import datetime
 import tempfile
 import os
 from serverless_backend.services.handle_operations_from_logs import handle_operations_from_logs
+from serverless_backend.services.parse_segment_words import parse_segment_words
 from serverless_backend.services.video_clipper import VideoClipper
 
 
@@ -63,7 +64,18 @@ def generate_short_video(short_id):
         update_progress(10)
 
         update_message("Loading Operations")
-        segment_document_words = ast.literal_eval(segment_document['words'])
+
+        try:
+            segment_document_words = parse_segment_words(segment_document)
+        except ValueError as e:
+            update_message(f"Error parsing segment words: {str(e)}")
+            firebase_service.update_document("shorts", short_id, {"pending_operation": False})
+            return jsonify({
+                "status": "error",
+                "data": {"short_id": short_id, "error": str(e)},
+                "message": "Failed to parse segment words"
+            }), 400
+
         start_time = segment_document_words[0]['start_time']
         update_message("Read Segment Words")
         words_to_handle = handle_operations_from_logs(logs, segment_document_words)

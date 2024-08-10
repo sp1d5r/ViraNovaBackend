@@ -1,4 +1,3 @@
-import ast
 from io import BytesIO
 import random
 from flask import Blueprint, jsonify
@@ -7,6 +6,7 @@ from serverless_backend.services.handle_operations_from_logs import handle_opera
 from pydub import AudioSegment
 from datetime import datetime
 
+from serverless_backend.services.parse_segment_words import parse_segment_words
 from serverless_backend.services.verify_video_document import parse_and_verify_short, parse_and_verify_video, parse_and_verify_segment
 
 generate_test_audio = Blueprint("generate_test_audio", __name__)
@@ -14,7 +14,7 @@ generate_test_audio = Blueprint("generate_test_audio", __name__)
 
 @generate_test_audio.route("/v1/generate-test-audio/<short_id>", methods=['GET'])
 def generate_test_audio_for_short(short_id):
-    try:
+    if True:
         firebase_service = FirebaseService()
         short_document = firebase_service.get_document("shorts", short_id)
         update_progress = lambda x: firebase_service.update_document("shorts", short_id, {"update_progress": x})
@@ -82,18 +82,33 @@ def generate_test_audio_for_short(short_id):
             else:
                 update_message("Collected segmnet document")
 
-            segment_document_words = ast.literal_eval(segment_document['words'])
+            try:
+                segment_document_words = parse_segment_words(segment_document)
+            except ValueError as e:
+                update_message(f"Error parsing segment words: {str(e)}")
+                firebase_service.update_document("shorts", short_id, {"pending_operation": False})
+                return jsonify({
+                    "status": "error",
+                    "data": {"short_id": short_id, "error": str(e)},
+                    "message": "Failed to parse segment words"
+                }), 400
+
+
             update_message("Read Segment Words")
+            print(segment_document_words)
+            print(short_document['segment_id'])
             words_to_handle = handle_operations_from_logs(logs, segment_document_words)
             words_to_handle = [
                 {**word, 'end_time': min(word['end_time'], words_to_handle[i + 1]['start_time'])}
                 if i + 1 < len(words_to_handle) else word
                 for i, word in enumerate(words_to_handle)
             ]
+
             update_progress(60)
             update_message("Download Audio File to Memory")
             audio_stream = firebase_service.download_file_to_memory(audio_file)
             update_message("Create temporary audio file")
+            # I think it's happening here - and honestly, not too sure i want to write directly to a file.
             audio_data = AudioSegment.from_file_using_temporary_files(audio_stream)
 
             combined_audio = AudioSegment.silent(duration=0)
@@ -151,13 +166,13 @@ def generate_test_audio_for_short(short_id):
                         },
                         "message": "Failed to generate audio for clip"
                     }), 400
-    except Exception as e:
-        return jsonify(
-            {
-                "status": "error",
-                "data": {
-                    "short_id": short_id,
-                    "error": str(e)
-                },
-                "message": "Failed to generate audio for clip"
-            }), 400
+    # except Exception as e:
+    #     return jsonify(
+    #         {
+    #             "status": "error",
+    #             "data": {
+    #                 "short_id": short_id,
+    #                 "error": str(e)
+    #             },
+    #             "message": "Failed to generate audio for clip"
+    #         }), 400

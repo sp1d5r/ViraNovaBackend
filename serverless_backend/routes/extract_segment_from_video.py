@@ -3,6 +3,7 @@ import os
 import tempfile
 from flask import Blueprint, jsonify
 from serverless_backend.services.firebase import FirebaseService
+from serverless_backend.services.parse_segment_words import parse_segment_words
 from serverless_backend.services.video_clipper import VideoClipper
 
 extract_segment_from_video = Blueprint("extract_segment_from_video", __name__)
@@ -38,7 +39,8 @@ def crop_video_to_segment(segment_id):
         update_progress_message = lambda x: firebase_service.update_document("topical_segments", segment_id, {'progress_message': x})
         firebase_service.update_document("topical_segments", segment_id, {'segment_status': "Getting Segment Video"})
 
-        words = ast.literal_eval(segment_document['words'])
+        words = parse_segment_words(segment_document)
+
         begin_cut = words[0]['start_time']
         end_cut = words[-1]['end_time']
         video_path = video_document['videoPath']

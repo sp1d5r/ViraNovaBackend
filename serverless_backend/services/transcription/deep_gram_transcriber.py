@@ -51,7 +51,7 @@ class DeepgramTranscriberService:
         processed_words = []
         for i, word in enumerate(words):
             processed_word = {
-                'word': word['word'],
+                'word': word['punctuated_word'],
                 'start_time': word['start'],
                 'end_time': word['end'],
                 'confidence': word['confidence'],
