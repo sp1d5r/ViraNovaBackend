@@ -14,11 +14,16 @@ generate_test_audio = Blueprint("generate_test_audio", __name__)
 
 @generate_test_audio.route("/v1/generate-test-audio/<short_id>", methods=['GET'])
 def generate_test_audio_for_short(short_id):
-    if True:
+    try:
         firebase_service = FirebaseService()
         short_document = firebase_service.get_document("shorts", short_id)
         update_progress = lambda x: firebase_service.update_document("shorts", short_id, {"update_progress": x})
         update_message = lambda x: firebase_service.update_document("shorts", short_id, {"progress_message": x, "last_updated": datetime.now()})
+
+        auto_generate = False
+
+        if "auto_generate" in short_document.keys():
+            auto_generate = short_document['auto_generate']
 
         is_valid_document, error_message = parse_and_verify_short(short_document)
         if is_valid_document:
@@ -32,7 +37,10 @@ def generate_test_audio_for_short(short_id):
             if "video_id" in short_document.keys():
                 video_id = short_document['video_id']
             else:
-                firebase_service.update_document("shorts", short_id, {"pending_operation": False})
+                firebase_service.update_document("shorts", short_id, {
+                    "pending_operation": False,
+                    "auto_generate": False
+                })
                 return jsonify(
                     {
                         "status": "error",
@@ -49,7 +57,10 @@ def generate_test_audio_for_short(short_id):
             update_progress(40)
             if not is_valid_document:
                 update_message("Not related to an original video... Contact someone...")
-                firebase_service.update_document("shorts", short_id, {"pending_operation": False})
+                firebase_service.update_document("shorts", short_id, {
+                    "pending_operation": False,
+                    "auto_generate": False
+                })
                 return jsonify(
                     {
                         "status": "error",
@@ -69,7 +80,10 @@ def generate_test_audio_for_short(short_id):
 
             if not is_valid_document:
                 update_message("Not related to an segment... Contact someone...")
-                firebase_service.update_document("shorts", short_id, {"pending_operation": False})
+                firebase_service.update_document("shorts", short_id, {
+                    "pending_operation": False,
+                    "auto_generate": False
+                })
                 return jsonify(
                     {
                         "status": "error",
@@ -86,7 +100,10 @@ def generate_test_audio_for_short(short_id):
                 segment_document_words = parse_segment_words(segment_document)
             except ValueError as e:
                 update_message(f"Error parsing segment words: {str(e)}")
-                firebase_service.update_document("shorts", short_id, {"pending_operation": False})
+                firebase_service.update_document("shorts", short_id, {
+                    "pending_operation": False,
+                    "auto_generate": False
+                })
                 return jsonify({
                     "status": "error",
                     "data": {"short_id": short_id, "error": str(e)},
@@ -147,6 +164,12 @@ def generate_test_audio_for_short(short_id):
             update_progress(100)
             firebase_service.update_document('shorts', short_id, {'temp_audio_file': new_blob_location})
             firebase_service.update_document("shorts", short_id, {"pending_operation": False})
+
+            if auto_generate:
+                firebase_service.update_document("shorts", short_id, {
+                    "short_status": "Create Short Video",
+                })
+
             return jsonify(
                     {
                         "status": "success",
@@ -166,13 +189,13 @@ def generate_test_audio_for_short(short_id):
                         },
                         "message": "Failed to generate audio for clip"
                     }), 400
-    # except Exception as e:
-    #     return jsonify(
-    #         {
-    #             "status": "error",
-    #             "data": {
-    #                 "short_id": short_id,
-    #                 "error": str(e)
-    #             },
-    #             "message": "Failed to generate audio for clip"
-    #         }), 400
+    except Exception as e:
+        return jsonify(
+            {
+                "status": "error",
+                "data": {
+                    "short_id": short_id,
+                    "error": str(e)
+                },
+                "message": "Failed to generate audio for clip"
+            }), 400

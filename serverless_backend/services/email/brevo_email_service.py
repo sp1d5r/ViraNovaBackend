@@ -68,3 +68,15 @@ class EmailService:
         logger.info(f"Sending video ready notification for '{video_title}' to {to_email}")
         return self.send_email_template(to_email, template_id, template_params, subject)
 
+    def send_short_ready_notification(self, to_email, short_idea, video_url):
+        template_id = 3  # Replace with your actual template ID
+        template_params = {
+            "video_title": short_idea,
+            "video_url": video_url,
+            "current_date": datetime.now().strftime("%b %d, %Y")
+        }
+        subject = f"[Short Ready] Your short '{short_idea}' is ready!"
+
+        logger.info(f"Sending video ready notification for '{short_idea}' to {to_email}")
+        return self.send_email_template(to_email, template_id, template_params, subject)
+

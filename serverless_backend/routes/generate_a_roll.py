@@ -22,13 +22,21 @@ def generate_a_roll_short(short_id):
         update_message = lambda x: firebase_services.update_document("shorts", short_id,
                                                                     {"progress_message": x, "last_updated": datetime.now()})
 
+        auto_generate = False
+
+        if "auto_generate" in short_doc.keys():
+            auto_generate = short_doc['auto_generate']
+
         update_message("Retrieved the document")
         firebase_services.update_document("shorts", short_id, {"pending_operation": True})
         update_progress(20)
         valid_short, error_message = parse_and_verify_short(short_doc)
 
         if not valid_short:
-            firebase_services.update_document("shorts", short_id, {"pending_operation": False})
+            firebase_services.update_document("shorts", short_id, {
+                "pending_operation": False,
+                "auto_generate": False,
+            })
             return jsonify(
                 {
                     "status": "error",
@@ -91,6 +99,11 @@ def generate_a_roll_short(short_id):
             "pending_operation": False
         })
 
+        if auto_generate:
+            firebase_services.update_document("shorts", short_id, {
+                "short_status": "Generate B-Roll"
+            })
+
         # Clean up temporary files
         os.remove(temp_input_path)
         video_cropper.clean_up(output_path)
@@ -105,7 +118,10 @@ def generate_a_roll_short(short_id):
                 "message": "Successfully generated and uploaded A-roll"
             }), 200
     except Exception as e:
-        firebase_services.update_document("shorts", short_id, {"pending_operation": False})
+        firebase_services.update_document("shorts", short_id, {
+            "pending_operation": False,
+            "auto_generate": False,
+        })
         return jsonify(
             {
                 "status": "error",

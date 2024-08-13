@@ -8,12 +8,23 @@ from serverless_backend.services.parse_segment_words import parse_segment_words
 from serverless_backend.services.verify_video_document import parse_and_verify_short
 from serverless_backend.services.add_text_to_video_service import AddTextToVideoService
 from serverless_backend.services.video_audio_merger import VideoAudioMerger
+from serverless_backend.services.email.brevo_email_service import EmailService
 from serverless_backend.services.firebase import FirebaseService
 from serverless_backend.services.video_analyser.video_analyser import VideoAnalyser
+from firebase_admin import auth
 import cv2
 import tempfile
 from flask import Blueprint, jsonify
 import json
+
+
+def get_user_email(uid):
+    try:
+        user = auth.get_user(uid)
+        return user.email
+    except Exception as e:
+        print(f"Error fetching user data for UID {uid}: {str(e)}")
+        return None
 
 
 spacial_segmentation = Blueprint("spacial_segmentation", __name__)
@@ -122,12 +133,20 @@ def get_bounding_boxes(short_id):
                                                                      {"progress_message": x,
                                                                       "last_updated": datetime.now()})
 
+        auto_generate = False
+
+        if "auto_generate" in short_doc.keys():
+            auto_generate = short_doc['auto_generate']
+
         update_message("Retrieved the document")
         firebase_services.update_document("shorts", short_id, {"pending_operation": True})
 
         update_message("Checking short document is correct")
         if short_doc["short_video_saliency"] is None:
-            firebase_services.update_document("shorts", short_id, {"pending_operation": False})
+            firebase_services.update_document("shorts", short_id, {
+                "pending_operation": False,
+                "auto_generate": False
+            })
             return jsonify({
                 "status": "error",
                 "data": {"short_id": short_id, "error": "Short video does not have saliency"},
@@ -172,7 +191,9 @@ def get_bounding_boxes(short_id):
         update_progress(90)
 
         update_progress(100)
-        firebase_services.update_document("shorts", short_id, {"pending_operation": False})
+        firebase_services.update_document("shorts", short_id, {
+            "pending_operation": False,
+        })
         firebase_services.update_document(
             "shorts",
             short_id,
@@ -181,6 +202,11 @@ def get_bounding_boxes(short_id):
                 "box_type": ['standard_tiktok' for _ in range(len(interpolated_boxes['standard_tiktok']))]
             }
         )
+
+        if auto_generate:
+            firebase_services.update_document("shorts", short_id, {
+                "short_status": "Generate A-Roll",
+            })
 
         return jsonify({
             "status": "success",
@@ -193,7 +219,10 @@ def get_bounding_boxes(short_id):
         }), 200
 
     except Exception as e:
-        firebase_services.update_document("shorts", short_id, {"pending_operation": False})
+        firebase_services.update_document("shorts", short_id, {
+            "pending_operation": False,
+            "auto_generate": False
+        })
         return jsonify({
             "status": "error",
             "data": {"short_id": short_id, "error": str(e)},
@@ -283,6 +312,11 @@ def create_cropped_video(short_id):
                                                                      {"progress_message": x,
                                                                       "last_updated": datetime.now()})
         update_temp_progress = lambda x, start, length: update_progress(start + (length * (x / 100)))
+
+        auto_generate = False
+
+        if "auto_generate" in short_doc.keys():
+            auto_generate = short_doc['auto_generate']
 
         update_message("Retrieved the document")
         firebase_service.update_document("shorts", short_id, {"pending_operation": True})
@@ -443,8 +477,15 @@ def create_cropped_video(short_id):
         firebase_service.update_document("shorts", short_id, {"finished_short_location": destination_blob_name, "finished_short_fps": short_doc['fps']})
 
         update_message("Finished Video!")
-        firebase_service.update_document("shorts", short_id, {"pending_operation": False})
+        firebase_service.update_document("shorts", short_id, {
+            "pending_operation": False,
+            "auto_generate": False
+        })
 
+        if "uid" in short_doc.keys():
+            email = get_user_email(short_doc['uid'])
+            email_service = EmailService()
+            email_service.send_video_ready_notification(email, short_doc['short_id'], '')
 
         return jsonify(
             {

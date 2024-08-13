@@ -1,5 +1,7 @@
 import ast
 from flask import Blueprint, jsonify
+
+from serverless_backend.routes.extract_segment_from_video import crop_video_to_segment
 from serverless_backend.services.firebase import FirebaseService
 from datetime import datetime
 import tempfile
@@ -57,7 +59,20 @@ def generate_short_video(short_id):
         update_progress(10)
 
         update_message("Loading segment video to temporary location")
-        video_path = segment_document['video_segment_location']
+
+        video_path = "None"
+        if 'video_segment_location' in segment_document.keys():
+            video_path = segment_document['video_segment_location']
+        else:
+            firebase_service.update_document("shorts", short_id, {"pending_operation": False})
+            response, status_code = crop_video_to_segment(segment_id)
+            segment_document = firebase_service.get_document("topical_segments", segment_id)
+            if 'video_segment_location' in segment_document.keys():
+                video_path = segment_document['video_segment_location']
+            else:
+                return response, status_code
+
+        firebase_service.update_document("shorts", short_id, {"pending_operation": True})
         input_path = firebase_service.download_file_to_temp(video_path)
         video_duration = video_clipper.get_video_duration(input_path)
         print_file_size(input_path)

@@ -18,13 +18,21 @@ def generate_b_roll_short(short_id):
         update_message = lambda x: firebase_services.update_document("shorts", short_id,
                                                                     {"progress_message": x, "last_updated": datetime.now()})
 
+        auto_generate = False
+
+        if "auto_generate" in short_doc.keys():
+            auto_generate = short_doc['auto_generate']
+
         update_message("Retrieved the document")
         firebase_services.update_document("shorts", short_id, {"pending_operation": True})
         update_progress(20)
         valid_short, error_message = parse_and_verify_short(short_doc)
 
         if not valid_short:
-            firebase_services.update_document("shorts", short_id, {"pending_operation": False})
+            firebase_services.update_document("shorts", short_id, {
+                "pending_operation": False,
+                "auto_generate": False,
+            })
             return jsonify(
                 {
                     "status": "error",
@@ -37,7 +45,10 @@ def generate_b_roll_short(short_id):
 
 
         if not "b_roll_tracks" in short_doc:
-            firebase_services.update_document("shorts", short_id, {"pending_operation": False})
+            firebase_services.update_document("shorts", short_id, {
+                "pending_operation": False,
+                "auto_generate": False,
+            })
             return jsonify(
                 {
                     "status": "error",
@@ -51,7 +62,10 @@ def generate_b_roll_short(short_id):
         update_message("Located B Roll")
 
         if not "short_a_roll" in short_doc:
-            firebase_services.update_document("shorts", short_id, {"pending_operation": False})
+            firebase_services.update_document("shorts", short_id, {
+                "pending_operation": False,
+                "auto_generate": False,
+            })
             return jsonify(
                 {
                     "status": "error",
@@ -94,6 +108,16 @@ def generate_b_roll_short(short_id):
                 "short_b_roll": video_with_b_roll_blob
             }
         )
+
+        if auto_generate:
+            firebase_services.update_document(
+                "shorts",
+                short_id,
+                {
+                    "short_status": "Preview Video",
+                }
+            )
+
         return jsonify(
             {
                 "status": "success",
@@ -105,7 +129,10 @@ def generate_b_roll_short(short_id):
             }), 400
 
     except Exception as e:
-        firebase_services.update_document("shorts", short_id, {"pending_operation": False})
+        firebase_services.update_document("shorts", short_id, {
+            "pending_operation": False,
+            "auto_generate": False,
+        })
         return jsonify(
             {
                 "status": "error",
