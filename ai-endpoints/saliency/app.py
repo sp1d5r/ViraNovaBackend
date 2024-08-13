@@ -261,7 +261,7 @@ def create_video_from_frames(frames, original_video_path, skip_frames=2):
     temp_video_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
     temp_video_path = temp_video_file.name
 
-    out = cv2.VideoWriter(temp_video_path, cv2.VideoWriter_fourcc('M','J','P','G'), fps, (frame_width, frame_height), isColor=False)
+    out = cv2.VideoWriter(temp_video_path, cv2.VideoWriter_fourcc(*'avc1'), fps, (frame_width, frame_height), isColor=False)
 
     for frame in frames:
         # Ensure the frame is scaled correctly and converted to uint8

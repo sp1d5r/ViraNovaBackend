@@ -47,37 +47,45 @@ class BoundingBoxGenerator:
         height -= 1  # Adjust for integral image size
         width -= 1  # Adjust for integral image size
         max_height = height // 2  # Maximum height is 50% of the screen
+        max_width = width // 2  # Maximum width is 50% of the screen
 
-        corners = [(0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1)]
+        # Define starting points (x, y) for each edge
+        start_points = [
+            (0, height // 2),  # Left edge
+            (width // 2, 0),  # Top edge
+            (width // 2, 0),  # Right edge
+            (0, height // 2)  # Bottom edge
+        ]
+
         best_box = None
         best_saliency_ratio = 0
 
-        for corner_x, corner_y in corners:
+        for start_x, start_y in start_points:
             current_height = max_height
             while current_height > self.step_size:
                 current_width = int(current_height * self.reaction_aspect_ratio)
-                if current_width > width // 2:
-                    current_width = width // 2
+                if current_width > max_width:
+                    current_width = max_width
                     current_height = int(current_width / self.reaction_aspect_ratio)
 
-                if corner_x + current_width > width or corner_y + current_height > height:
-                    current_height -= self.step_size
-                    continue
+                # Adjust x and y to keep the box within frame boundaries
+                x = min(start_x, width - current_width)
+                y = min(start_y, height - current_height)
 
-                saliency = self._saliency_captured(integral_image, corner_x, corner_y,
-                                                   corner_x + current_width - 1, corner_y + current_height - 1)
+                saliency = self._saliency_captured(integral_image, x, y,
+                                                   x + current_width - 1, y + current_height - 1)
                 area = current_width * current_height
                 saliency_ratio = saliency / area
 
                 if saliency_ratio > best_saliency_ratio:
                     best_saliency_ratio = saliency_ratio
-                    best_box = (corner_x, corner_y, current_width, current_height)
+                    best_box = (x, y, current_width, current_height)
 
                 # Check for significant drop in saliency
                 smaller_height = current_height - self.step_size
                 smaller_width = int(smaller_height * self.reaction_aspect_ratio)
-                smaller_saliency = self._saliency_captured(integral_image, corner_x, corner_y,
-                                                           corner_x + smaller_width - 1, corner_y + smaller_height - 1)
+                smaller_saliency = self._saliency_captured(integral_image, x, y,
+                                                           x + smaller_width - 1, y + smaller_height - 1)
                 smaller_area = smaller_width * smaller_height
                 smaller_saliency_ratio = smaller_saliency / smaller_area
 

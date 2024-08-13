@@ -53,106 +53,128 @@ class VideoCropper:
             raise ValueError(f"Unknown frame type: {frame_type}")
 
     def _process_standard_tiktok(self, frame: np.ndarray, box: Tuple[int, int, int, int]) -> np.ndarray:
-        x, y, w, h = box
-        cropped_frame = frame[y:y + h, x:x + w]
-        return cv2.resize(cropped_frame, (self.target_width, self.target_height))
+        try:
+            x, y, w, h = box
+            cropped_frame = frame[y:y + h, x:x + w]
+            if cropped_frame.size == 0:
+                raise ValueError("Cropped frame is empty")
+            return cv2.resize(cropped_frame, (self.target_width, self.target_height))
+        except Exception as e:
+            print(f"Error in _process_standard_tiktok: {str(e)}")
+            return None
 
     def _process_two_boxes(self, frame: np.ndarray, boxes: List[Tuple[int, int, int, int]], vertical: bool = True,
                            reverse: bool = False) -> np.ndarray:
-        cropped_frames = [frame[y:y + h, x:x + w] for x, y, w, h in boxes]
-        if reverse:
-            cropped_frames = cropped_frames[::-1]
+        try:
+            cropped_frames = [frame[y:y + h, x:x + w] for x, y, w, h in boxes]
+            if reverse:
+                cropped_frames = cropped_frames[::-1]
 
-        resized_frames = [cv2.resize(frame, (self.target_width, self.target_height // 2)) for frame in cropped_frames]
+            resized_frames = [cv2.resize(frame, (self.target_width, self.target_height // 2)) for frame in cropped_frames]
 
-        if vertical:
-            stacked_frame = np.vstack(resized_frames)
-        else:
-            stacked_frame = np.hstack(resized_frames)
+            if vertical:
+                stacked_frame = np.vstack(resized_frames)
+            else:
+                stacked_frame = np.hstack(resized_frames)
 
-        return stacked_frame
+            return stacked_frame
+        except Exception as e:
+            print(f"Error in _process_two_boxes: {str(e)}")
+            return None
 
     def _process_picture_in_picture(self, frame: np.ndarray, box: Tuple[int, int, int, int]) -> np.ndarray:
-        # Process the main (background) frame
-        main_frame = self._process_standard_tiktok(frame, box)
+        try:
+            # Process the main (background) frame
+            main_frame = self._process_standard_tiktok(frame, box)
+            if main_frame is None:
+                return None
 
-        # Create a smaller version of the original frame for PiP
-        pip_height = self.target_height // 4  # 1/4 of the frame height
-        pip_width = int(pip_height * (self.width / self.height))  # Maintain aspect ratio
+            # Create a smaller version of the original frame for PiP
+            pip_height = self.target_height // 4  # 1/4 of the frame height
+            pip_width = int(pip_height * (self.width / self.height))  # Maintain aspect ratio
 
-        # Add padding for border
-        border_thickness = 3
-        padding = border_thickness * 2
-        pip_frame = cv2.resize(frame, (pip_width - padding, pip_height - padding))
+            # Add padding for border
+            border_thickness = 3
+            padding = border_thickness * 2
+            pip_frame = cv2.resize(frame, (pip_width - padding, pip_height - padding))
 
-        # Create a transparent frame for the PiP with border
-        pip_with_border = np.zeros((pip_height, pip_width, 4), dtype=np.uint8)
+            # Create a transparent frame for the PiP with border
+            pip_with_border = np.zeros((pip_height, pip_width, 4), dtype=np.uint8)
 
-        # Draw white border
-        cv2.rectangle(pip_with_border, (0, 0), (pip_width - 1, pip_height - 1), (255, 255, 255, 255), border_thickness)
+            # Draw white border
+            cv2.rectangle(pip_with_border, (0, 0), (pip_width - 1, pip_height - 1), (255, 255, 255, 255), border_thickness)
 
-        # Place the PiP frame inside the border
-        pip_with_border[border_thickness:pip_height - border_thickness,
-        border_thickness:pip_width - border_thickness, :3] = pip_frame
-        pip_with_border[border_thickness:pip_height - border_thickness,
-        border_thickness:pip_width - border_thickness, 3] = 255
+            # Place the PiP frame inside the border
+            pip_with_border[border_thickness:pip_height - border_thickness,
+            border_thickness:pip_width - border_thickness, :3] = pip_frame
+            pip_with_border[border_thickness:pip_height - border_thickness,
+            border_thickness:pip_width - border_thickness, 3] = 255
 
-        # Calculate position for PiP (centered at the bottom)
-        y_offset = self.target_height - pip_height - 20  # 20 pixels from bottom
-        x_offset = (self.target_width - pip_width) // 2
+            # Calculate position for PiP (centered at the bottom)
+            y_offset = self.target_height - pip_height - 20  # 20 pixels from bottom
+            x_offset = (self.target_width - pip_width) // 2
 
-        # Overlay PiP on main frame
-        for c in range(0, 3):
-            alpha = pip_with_border[:, :, 3] / 255.0
-            main_frame[y_offset:y_offset + pip_height, x_offset:x_offset + pip_width, c] = \
-                (1 - alpha) * main_frame[y_offset:y_offset + pip_height, x_offset:x_offset + pip_width, c] + \
-                alpha * pip_with_border[:, :, c]
+            # Overlay PiP on main frame
+            for c in range(0, 3):
+                alpha = pip_with_border[:, :, 3] / 255.0
+                main_frame[y_offset:y_offset + pip_height, x_offset:x_offset + pip_width, c] = \
+                    (1 - alpha) * main_frame[y_offset:y_offset + pip_height, x_offset:x_offset + pip_width, c] + \
+                    alpha * pip_with_border[:, :, c]
 
-        return main_frame
+            return main_frame
+        except Exception as e:
+            print(f"Error in _process_picture_in_picture: {str(e)}")
+            return None
 
     def _process_reaction_box(self, frame: np.ndarray, boxes: List[Tuple[int, int, int, int]]) -> np.ndarray:
-        main_box, reaction_box = boxes
-        # Process the main (background) frame
-        main_frame = self._process_standard_tiktok(frame, main_box)
+        try:
+            main_box, reaction_box = boxes
+            # Process the main (background) frame
+            main_frame = self._process_standard_tiktok(frame, main_box)
+            if main_frame is None:
+                return None
 
-        if reaction_box is None:
+            if reaction_box is None:
+                return main_frame
+
+            # Create a smaller version of the reaction area
+            x, y, w, h = reaction_box
+            reaction_frame = frame[y:y + h, x:x + w]
+            reaction_height = self.target_height // 4  # 1/4 of the frame height
+            reaction_width = int(reaction_height * (w / h))  # Maintain aspect ratio
+
+            # Add padding for border
+            border_thickness = 3
+            padding = border_thickness * 2
+            reaction_frame = cv2.resize(reaction_frame, (reaction_width - padding, reaction_height - padding))
+
+            # Create a transparent frame for the reaction box with border
+            reaction_with_border = np.zeros((reaction_height, reaction_width, 4), dtype=np.uint8)
+
+            # Draw white border
+            cv2.rectangle(reaction_with_border, (0, 0), (reaction_width - 1, reaction_height - 1), (255, 255, 255, 255), border_thickness)
+
+            # Place the reaction frame inside the border
+            reaction_with_border[border_thickness:reaction_height - border_thickness,
+            border_thickness:reaction_width - border_thickness, :3] = reaction_frame
+            reaction_with_border[border_thickness:reaction_height - border_thickness,
+            border_thickness:reaction_width - border_thickness, 3] = 255
+
+            # Calculate position for reaction box (centered at the bottom)
+            y_offset = self.target_height - reaction_height - 20  # 20 pixels from bottom
+            x_offset = (self.target_width - reaction_width) // 2
+
+            # Overlay reaction box on main frame
+            for c in range(0, 3):
+                alpha = reaction_with_border[:, :, 3] / 255.0
+                main_frame[y_offset:y_offset + reaction_height, x_offset:x_offset + reaction_width, c] = \
+                    (1 - alpha) * main_frame[y_offset:y_offset + reaction_height, x_offset:x_offset + reaction_width, c] + \
+                    alpha * reaction_with_border[:, :, c]
+
             return main_frame
-
-        # Create a smaller version of the reaction area
-        x, y, w, h = reaction_box
-        reaction_frame = frame[y:y + h, x:x + w]
-        reaction_height = self.target_height // 4  # 1/4 of the frame height
-        reaction_width = int(reaction_height * (w / h))  # Maintain aspect ratio
-
-        # Add padding for border
-        border_thickness = 3
-        padding = border_thickness * 2
-        reaction_frame = cv2.resize(reaction_frame, (reaction_width - padding, reaction_height - padding))
-
-        # Create a transparent frame for the reaction box with border
-        reaction_with_border = np.zeros((reaction_height, reaction_width, 4), dtype=np.uint8)
-
-        # Draw white border
-        cv2.rectangle(reaction_with_border, (0, 0), (reaction_width - 1, reaction_height - 1), (255, 255, 255, 255), border_thickness)
-
-        # Place the reaction frame inside the border
-        reaction_with_border[border_thickness:reaction_height - border_thickness,
-        border_thickness:reaction_width - border_thickness, :3] = reaction_frame
-        reaction_with_border[border_thickness:reaction_height - border_thickness,
-        border_thickness:reaction_width - border_thickness, 3] = 255
-
-        # Calculate position for reaction box (centered at the bottom)
-        y_offset = self.target_height - reaction_height - 20  # 20 pixels from bottom
-        x_offset = (self.target_width - reaction_width) // 2
-
-        # Overlay reaction box on main frame
-        for c in range(0, 3):
-            alpha = reaction_with_border[:, :, 3] / 255.0
-            main_frame[y_offset:y_offset + reaction_height, x_offset:x_offset + reaction_width, c] = \
-                (1 - alpha) * main_frame[y_offset:y_offset + reaction_height, x_offset:x_offset + reaction_width, c] + \
-                alpha * reaction_with_border[:, :, c]
-
-        return main_frame
+        except Exception as e:
+            print(f"Error in _process_reaction_box: {str(e)}")
+            return None
 
     def crop_video(self) -> str:
         self._initialize_video()
@@ -160,7 +182,7 @@ class VideoCropper:
         with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp_file:
             output_path = tmp_file.name
 
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        fourcc = cv2.VideoWriter_fourcc(*'avc1')
         out = cv2.VideoWriter(output_path, fourcc, self.fps, (self.target_width, self.target_height))
 
         frame_idx = 0
@@ -169,8 +191,14 @@ class VideoCropper:
             if not ret:
                 break
 
+            if frame is None or frame.size == 0:
+                print(f"Empty or invalid frame at index {frame_idx}. Skipping...")
+                frame_idx += 1
+                continue
+
             frame_type, boxes = self._get_bounding_box(frame_idx)
 
+            processed_frame = None
             if frame_type == "standard_tiktok":
                 processed_frame = self._process_standard_tiktok(frame, boxes[0])
             elif frame_type == "two_boxes":
@@ -182,9 +210,12 @@ class VideoCropper:
             elif frame_type == "reaction_box":
                 processed_frame = self._process_reaction_box(frame, boxes)
             else:
-                raise ValueError(f"Unknown frame type: {frame_type}")
+                print(f"Unknown frame type: {frame_type}. Skipping...")
 
-            out.write(processed_frame)
+            if processed_frame is not None:
+                out.write(processed_frame)
+            else:
+                print(f"Failed to process frame {frame_idx}. Skipping...")
 
             frame_idx += 1
             if frame_idx % 100 == 0:
@@ -201,4 +232,3 @@ class VideoCropper:
             print(f"Temporary file {temp_file_path} has been removed.")
         except Exception as e:
             print(f"Error removing temporary file {temp_file_path}: {str(e)}")
-

@@ -442,7 +442,7 @@ def main():
     create_or_update_lambda_function(repository_uri, lambda_function_name, role_arn)
 
     # List routes in the Flask app
-    # from serverless_backend.app import app, list_routes
+    # from serverless_backend.main import app, list_routes
     # routes = list_routes(app)
     # print(routes)
     #

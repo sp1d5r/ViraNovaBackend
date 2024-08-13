@@ -34,11 +34,12 @@ def delete_operation(words_with_index, start_index, end_index):
 # Route
 @edit_transcript.route("/v1/temporal-segmentation/<short_id>", methods=['GET'])
 def perform_temporal_segmentation(short_id):
-
+    firebase_service = FirebaseService()
     try:
-        firebase_service = FirebaseService()
         short_document = firebase_service.get_document("shorts", short_id)
         is_valid_document, error_message = parse_and_verify_short(short_document)
+
+        firebase_service.update_document("shorts", short_id, {"pending_operation": True})
 
         logs = [{
             "time": datetime.now(),
@@ -155,8 +156,14 @@ def perform_temporal_segmentation(short_id):
                     error_count += 1
 
             if error_count >= MAX_ERROR_LIMIT:
+                update_logs({
+                    "time": datetime.now(),
+                    "message": "CHAIN: Transcript editing complete!",
+                    "type": "success"
+                })
                 firebase_service.update_document('shorts', short_id, {'short_status': "Clipping Failed"})
 
+            firebase_service.update_document("shorts", short_id, {"pending_operation": False})
             return jsonify(
             {
                 "status": "success",
@@ -169,6 +176,7 @@ def perform_temporal_segmentation(short_id):
                 "message": "Successfully edited transcript"
             }), 200
         else:
+            firebase_service.update_document("shorts", short_id, {"pending_operation": False})
             return jsonify(
                 {
                     "status": "error",
@@ -179,6 +187,7 @@ def perform_temporal_segmentation(short_id):
                     "message": "Failed to edit transcript"
                 }), 400
     except Exception as e:
+        firebase_service.update_document("shorts", short_id, {"pending_operation": False})
         return jsonify(
             {
                 "status": "error",

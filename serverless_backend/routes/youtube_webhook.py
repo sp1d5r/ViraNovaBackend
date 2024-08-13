@@ -81,8 +81,12 @@ def handle_youtube_webhook():
 
                 # Check video length if it's less than 1 minute ignore
                 duration = parse_duration(video['duration'])
-                if duration < timedelta(minutes=1):
-                    print(f"Video {video_id} is shorter than 1 minute. Ignoring.")
+                if duration < timedelta(minutes=5):
+                    print(f"Video {video_id} is shorter than 5 minute. Ignoring.")
+                    return '', 204
+
+                if duration > timedelta(hours=1.75):
+                    print(f"Video {video_id} is longer than 1.75 hours. Ignoring.")
                     return '', 204
 
                 video_exists = firebase_service.query_documents("videos", "videoId", video_id)
@@ -90,6 +94,7 @@ def handle_youtube_webhook():
                 if len(video_exists) == 0:
                     # Add it to the videos documents with status "Loading"
                     video['status'] = "Loading..."
+                    video['uploadTimestamp'] = int(datetime.now().timestamp() * 1_000_000)
                     video_document_id = firebase_service.add_document(
                         "videos",
                         video,

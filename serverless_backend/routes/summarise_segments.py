@@ -17,6 +17,40 @@ def get_user_email(uid):
         print(f"Error fetching user data for UID {uid}: {str(e)}")
         return None
 
+
+def get_unique_emails(video_document, firebase_service):
+    unique_emails = set()
+
+    if video_document.get('uid'):
+        # Video is for a specific user
+        uid = video_document['uid']
+        user_email = get_user_email(uid)
+        if user_email:
+            unique_emails.add(user_email)
+        else:
+            print(f"No email found for user {uid}")
+    elif video_document.get('channelId'):
+        # Video is for a channel
+        channel_id = video_document['channelId']
+        user_documents = firebase_service.query_documents('userstrackingchannels', 'channelId', channel_id)
+        for user_document in user_documents:
+            uid = user_document.get('uid')
+            user_email = get_user_email(uid)
+            if user_email:
+                unique_emails.add(user_email)
+            else:
+                print(f"No email found for user {uid}")
+
+    return unique_emails
+
+
+def notify_users(video_document, email_service, firebase_service):
+    video_title = video_document.get('originalFileName') or video_document.get('videoTitle')
+    unique_emails = get_unique_emails(video_document, firebase_service)
+
+    for email in unique_emails:
+        email_service.send_video_ready_notification(email, video_title, '')
+
 @summarise_segments.route("/v1/summarise-segments/<video_id>", methods=['GET'])
 def summarise_segments_for_transcript(video_id):
     try:
@@ -64,31 +98,7 @@ def summarise_segments_for_transcript(video_id):
             update_progress_message("Segments Summarised!")
 
             email_service = EmailService()
-
-            # Email relevant people linked to the original channel
-            if video_document.get('uid'):
-                # then the video is for a specific user
-                uid = video_document.get('uid')
-                video_title = video_document.get('originalFileName')
-                user_email = get_user_email(uid)
-                if user_email:
-                    email_service.send_video_ready_notification(user_email, video_title, '')
-                else:
-                    print(f"No email found for user {uid}")
-            else:
-                # get the channel id for the user
-                if video_document.get('channelId'):
-                    channel_id = video_document.get('channelId')
-                    user_documents = firebase_service.query_documents('userstrackingchannels', 'channelId', channel_id)
-                    video_title = video_document.get('videoTitle')
-                    for user_document in user_documents:
-                        uid = user_document.get('uid')
-                        user_email = get_user_email(uid)
-                        if user_email:
-                            # send email to this user's email
-                            email_service.send_video_ready_notification(user_email, video_title, '')
-                        else:
-                            print(f"No email found for user {uid}")
+            notify_users(video_document, email_service, firebase_service)
 
             firebase_service.update_document("videos", video_id, {'status': 'Create TikTok Ideas'})
             return jsonify(
