@@ -93,22 +93,22 @@ def temporal_segmentation(event, context):
         # Update previous status to match new status so doesn't trigger till status changed
         db.document(doc_path).update({"previous_short_status": new_status})
         print(f"Document with new status: {new_status}")
-
-        status_route_mapping = {
-            "Edit Transcript": "v1/temporal-segmentation",
-            "Generate Audio": "v1/generate-test-audio",
-            "Create Short Video": "v1/create-short-video",
-            "Generate Saliency": "v1/get_saliency_for_short",
-            "Determine Video Boundaries": "v1/determine-boundaries",
-            "Get Bounding Boxes": "v1/get-bounding-boxes",
-            "Generate A-Roll": "v1/generate-a-roll",
-            "Generate B-Roll": "v1/generate-b-roll",
-            "Preview Video": "v1/create-cropped-video"
-        }
-
-        if new_status in status_route_mapping:
-            api_route = status_route_mapping[new_status]
-            process_video_upload(project_id, jwt_secret_key, ip_address, api_route, document_id)
+        #
+        # status_route_mapping = {
+        #     "Edit Transcript": "v1/temporal-segmentation",
+        #     "Generate Audio": "v1/generate-test-audio",
+        #     "Create Short Video": "v1/create-short-video",
+        #     "Generate Saliency": "v1/get_saliency_for_short",
+        #     "Determine Video Boundaries": "v1/determine-boundaries",
+        #     "Get Bounding Boxes": "v1/get-bounding-boxes",
+        #     "Generate A-Roll": "v1/generate-a-roll",
+        #     "Generate B-Roll": "v1/generate-b-roll",
+        #     "Preview Video": "v1/create-cropped-video"
+        # }
+        #
+        # if new_status in status_route_mapping:
+        #     api_route = status_route_mapping[new_status]
+        #     process_video_upload(project_id, jwt_secret_key, ip_address, api_route, document_id)
     else:
         print("Temporal Segmentation Stage triggered... Nothing happened.")
 

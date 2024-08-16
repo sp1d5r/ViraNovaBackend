@@ -3,6 +3,7 @@ import tempfile
 import firebase_admin
 from firebase_admin import credentials
 from firebase_admin import firestore
+from google.cloud import firestore as fs
 from firebase_admin import storage
 import base64
 import os
@@ -65,6 +66,74 @@ class FirebaseService:
         blob.download_to_file(in_memory_file)
         in_memory_file.seek(0)  # Move to the beginning of the BytesIO buffer
         return in_memory_file
+
+    def update_message(self,  document_id, message):
+        try:
+            # Get a reference to the document
+            doc_ref = self.db.collection("requests").document(document_id)
+
+            # Get the current document
+            doc = doc_ref.get()
+
+            # Prepare the new log entry
+            new_log = {
+                "message": message,
+                "timestamp": fs.SERVER_TIMESTAMP
+            }
+
+            # Get the current logs or initialize an empty list
+            current_logs = doc.to_dict().get("logs", []) if doc.exists else []
+
+            # Append the new log
+            updated_logs = current_logs + [new_log]
+
+            # Update the document
+            doc_ref.update({
+                "logs": updated_logs,
+                "progress_message": message,
+                "last_updated": fs.SERVER_TIMESTAMP
+            })
+
+            print(f"Successfully updated message for {document_id}")
+        except Exception as e:
+            print(f"Failed to update message: {str(e)}")
+
+    def create_short_request(self, endpoint: str, short_id: str, uid: str):
+        # Define valid endpoints
+        valid_endpoints = [
+            "v1/temporal-segmentation",
+            "v1/generate-test-audio",
+            "v1/create-short-video",
+            "v1/get_saliency_for_short",
+            "v1/determine-boundaries",
+            "v1/get-bounding-boxes",
+            "v1/generate-a-roll",
+            "v1/generate-b-roll",
+            "v1/create-cropped-video"
+        ]
+
+        # Validate endpoint
+        if endpoint not in valid_endpoints:
+            raise ValueError(f"Invalid endpoint: {endpoint}")
+
+        # Create the request document
+        request = {
+            "requestOperand": "short",
+            "requestEndpoint": endpoint,
+            "requestCreated": fs.SERVER_TIMESTAMP,
+            "uid": uid,
+            "shortId": short_id
+        }
+
+        # Add the document to Firestore
+        try:
+            doc_ref = self.db.collection("requests").add(request)
+            request_id = doc_ref[1].id
+            print(f"Request created with ID: {request_id}")
+            return request_id
+        except Exception as e:
+            print(f"Error creating request: {str(e)}")
+            raise
 
     def download_file_to_temp(self, blob_name, suffix=".mp4"):
         """Downloads a file from Firebase Storage to a temporary file and returns the file path."""

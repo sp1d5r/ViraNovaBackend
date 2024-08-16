@@ -1,4 +1,6 @@
 import uuid
+
+from firebase_admin import firestore
 from flask import Blueprint, jsonify
 from serverless_backend.services.firebase import FirebaseService
 from serverless_backend.services.langchain_chains.crop_segment import requires_cropping_chain, delete_operation_chain
@@ -32,17 +34,52 @@ def delete_operation(words_with_index, start_index, end_index):
     return new_words_with_index
 
 # Route
-@edit_transcript.route("/v1/temporal-segmentation/<short_id>", methods=['GET'])
-def perform_temporal_segmentation(short_id):
+@edit_transcript.route("/v1/temporal-segmentation/<request_id>", methods=['GET'])
+def perform_temporal_segmentation(request_id):
     firebase_service = FirebaseService()
     try:
-        short_document = firebase_service.get_document("shorts", short_id)
-        auto_generate = False
+        request_doc = firebase_service.get_document("requests", request_id)
+        if not request_doc:
+            return jsonify({"status": "error", "message": "Request not found"}), 404
 
-        if "auto_generate" in short_document.keys():
-            auto_generate = short_document['auto_generate']
+        short_id = request_doc.get('shortId')
+        if not short_id:
+            return jsonify({"status": "error", "message": "Short ID not found in request"}), 400
+
+        short_document = firebase_service.get_document("shorts", short_id)
+        if not short_document:
+            return jsonify({"status": "error", "message": "Short document not found"}), 404
+
+        # Update request log to indicate process initiation
+        firebase_service.update_document("requests", request_id, {
+            "logs": firestore.firestore.ArrayUnion([{
+                "message": "Temporal segmentation process initiated",
+                "timestamp": datetime.now()
+            }])
+        })
 
         is_valid_document, error_message = parse_and_verify_short(short_document)
+        if not is_valid_document:
+            firebase_service.update_document("shorts", short_id, {
+                "logs": firestore.firestore.ArrayUnion([{
+                    "time": datetime.now(),
+                    "message": f"Invalid short document: {error_message}",
+                    "type": "error"
+                }])
+            })
+            # Update request log for error
+            firebase_service.update_message(request_id, "Temporal segmentation failed: Invalid short document")
+            return jsonify({
+                "status": "error",
+                "data": {
+                    "request_id": request_id,
+                    "short_id": short_id,
+                    "error": error_message
+                },
+                "message": "Invalid short document"
+            }), 400
+
+        auto_generate = short_document.get('auto_generate', False)
 
         firebase_service.update_document("shorts", short_id, {"pending_operation": True})
 
@@ -52,165 +89,144 @@ def perform_temporal_segmentation(short_id):
             "type": "message"
         }]
 
-        print(short_document)
-
         def update_logs(log):
             logs.append(log)
             firebase_service.update_document('shorts', short_id, {'logs': logs})
 
-        if is_valid_document:
-            print("Here")
-            transcript = short_document['transcript']
-            transcript_words = transcript.split(" ")
-            words_with_index = [(index, word) for index, word in enumerate(transcript_words)]
-            short_idea = short_document['short_idea']
+        def update_progress(progress):
+            firebase_service.update_document('shorts', short_id, {'update_progress': progress})
 
-            error_count = 0
-            MAX_ERROR_LIMIT = 5
+        transcript = short_document['transcript']
+        transcript_words = transcript.split(" ")
+        words_with_index = [(index, word) for index, word in enumerate(transcript_words)]
+        short_idea = short_document['short_idea']
 
-            print(f"error_count {error_count}, max limit: {short_document}")
+        error_count = 0
+        MAX_ERROR_LIMIT = 5
 
-            while error_count < MAX_ERROR_LIMIT:
-                print("Began loop!")
-                try:
+        while error_count < MAX_ERROR_LIMIT:
+            try:
+                update_logs({
+                    "time": datetime.now(),
+                    "message": "Checking if the transcript needs to be edited.",
+                    "type": "message"
+                })
+                update_progress(10 + (90 * error_count / MAX_ERROR_LIMIT))
+
+                requires_cropping_uuid = uuid.uuid4()
+                does_transcript_require_cropping = requires_cropping_chain.invoke(
+                    {"transcript": " ".join([f"{i[1]}" for i in words_with_index if i[0] >= 0]), "short_idea": short_idea},
+                    config={"run_id": requires_cropping_uuid, "metadata": {"short_id": short_id, "request_id": request_id}}
+                )
+
+                update_logs({
+                    "time": datetime.now(),
+                    "message": f"Does the transcript need to be cropped = {does_transcript_require_cropping.requires_cropping}",
+                    "type": "message",
+                })
+
+                if does_transcript_require_cropping.requires_cropping:
                     update_logs({
                         "time": datetime.now(),
-                        "title": "Chain Operation",
-                        "message": "Checking if the transcript needs to be edited.",
+                        "message": "Determining where to crop...",
                         "type": "message"
                     })
 
-                    requires_cropping_uuid = uuid.uuid4()
-                    does_transcript_require_cropping = requires_cropping_chain.invoke(
-                        {"transcript": " ".join([f"{i[1]}" for i in words_with_index if i[0] >= 0]), "short_idea": short_idea},
-                        config={"run_id": requires_cropping_uuid, "metadata": {"short_id": short_id}}
+                    delete_operation_uuid = uuid.uuid4()
+                    transcript_delete_operation = delete_operation_chain.invoke(
+                        {"transcript": " ".join([f"({i[0]}) {i[1]}" for i in words_with_index]),
+                         "short_idea": short_idea},
+                        config={"run_id": delete_operation_uuid, "metadata": {"short_id": short_id, "request_id": request_id}}
                     )
 
                     update_logs({
                         "time": datetime.now(),
-                        "title": "Chain Operation",
-                        "message": f"CHAIN: Does the transcript need to be cropped = {does_transcript_require_cropping.requires_cropping}",
-                        "type": "message",
+                        "message": f"Deleting between ({transcript_delete_operation.start_index} - {transcript_delete_operation.end_index}). Explanation: {transcript_delete_operation.explanation}",
+                        "type": "delete",
+                        "start_index": transcript_delete_operation.start_index,
+                        "end_index": transcript_delete_operation.end_index,
                     })
+
+                    words_with_index = delete_operation(
+                        words_with_index=words_with_index,
+                        start_index=transcript_delete_operation.start_index,
+                        end_index=transcript_delete_operation.end_index
+                    )
 
                     update_logs({
                         "time": datetime.now(),
-                        "message": f"CHAIN: Explanation: {does_transcript_require_cropping.explanation}",
-                        "type": "message",
-                        "run_id": str(requires_cropping_uuid),
+                        "message": "Deleted transcript section.",
+                        "type": "message"
                     })
 
-                    if does_transcript_require_cropping.requires_cropping:
+                    if len([i for i in words_with_index if i[0] > -1]) < 70:
                         update_logs({
                             "time": datetime.now(),
-                            "message": "CHAIN: Determining where to crop...",
-                            "type": "message"
-                        })
-
-                        delete_operation_uuid = uuid.uuid4()
-                        transcript_delete_operation = delete_operation_chain.invoke(
-                            {"transcript": " ".join([f"({i[0]}) {i[1]}" for i in words_with_index]),
-                             "short_idea": short_idea},
-                            config={"run_id": delete_operation_uuid, "metadata": {"short_id": short_id}}
-                        )
-
-                        update_logs({
-                            "time": datetime.now(),
-                            "message":f"CHAIN: Deleting between ({transcript_delete_operation.start_index} - {transcript_delete_operation.end_index}). Explanation: {transcript_delete_operation.explanation}",
-                            "type": "delete",
-                            "start_index": transcript_delete_operation.start_index,
-                            "end_index": transcript_delete_operation.end_index,
-                            "run_id": str(transcript_delete_operation),
-                        })
-
-
-                        words_with_index = delete_operation(
-                            words_with_index=words_with_index,
-                            start_index=transcript_delete_operation.start_index,
-                            end_index=transcript_delete_operation.end_index
-                        )
-
-                        update_logs({
-                            "time": datetime.now(),
-                            "message": "CHAIN: Deleted transcript section.",
-                            "type": "message"
-                        })
-
-
-                        if len([i for i in words_with_index if i[0] > -1]) < 70:
-                            update_logs({
-                                "time": datetime.now(),
-                                "message": "CHAIN: Transcript has gotten met minimum word limit..",
-                                "type": "success"
-                            })
-                            break
-                    else:
-                        update_logs({
-                            "time": datetime.now(),
-                            "message": "CHAIN: Transcript editing complete!",
+                            "message": "Transcript has met minimum word limit.",
                             "type": "success"
                         })
-                        firebase_service.update_document('shorts', short_id, {'short_status': "Clipping Complete"})
                         break
-                except Exception as e:
+                else:
                     update_logs({
                         "time": datetime.now(),
-                        "message": f"FAILED IN PIPELINE: {str(e)}",
-                        "type": "error"
+                        "message": "Transcript editing complete!",
+                        "type": "success"
                     })
-                    error_count += 1
-
-            if error_count >= MAX_ERROR_LIMIT:
+                    firebase_service.update_document('shorts', short_id, {'short_status': "Clipping Complete"})
+                    break
+            except Exception as e:
                 update_logs({
                     "time": datetime.now(),
-                    "message": "CHAIN: Transcript editing complete!",
-                    "type": "success"
+                    "message": f"FAILED IN PIPELINE: {str(e)}",
+                    "type": "error"
                 })
-                firebase_service.update_document('shorts', short_id, {'short_status': "Clipping Failed"})
+                error_count += 1
 
-            firebase_service.update_document("shorts", short_id, {"pending_operation": False})
+        update_progress(100)
 
-            if auto_generate:
-                firebase_service.update_document("shorts", short_id, {
-                    'short_status': "Generate Audio"
-                })
 
-            return jsonify(
-            {
-                "status": "success",
-                "data": {
-                    "short_id": short_id,
-                    "errors": error_count,
-                    "maximum_errors_allowed": MAX_ERROR_LIMIT,
-                    "logs": logs
-                },
-                "message": "Successfully edited transcript"
-            }), 200
-        else:
-            firebase_service.update_document("shorts", short_id, {
-                "pending_operation": False,
-                "auto_generate": False
-            })
-            return jsonify(
-                {
-                    "status": "error",
-                    "data": {
-                        "short_id": short_id,
-                        "error": error_message
-                    },
-                    "message": "Failed to edit transcript"
-                }), 400
+        firebase_service.update_document("shorts", short_id, {"pending_operation": False})
+        if auto_generate:
+            firebase_service.create_short_request(
+                "v1/generate-test-audio",
+                short_id,
+                request_id.get('uid', 'SERVER REQUEST')
+
+            )
+
+        # Update request log for success
+        firebase_service.update_message(request_id, "Temporal segmentation completed successfully")
+
+
+        return jsonify({
+            "status": "success",
+            "data": {
+                "request_id": request_id,
+                "short_id": short_id,
+                "errors": error_count,
+                "maximum_errors_allowed": MAX_ERROR_LIMIT,
+            },
+            "message": "Successfully processed temporal segmentation"
+        }), 200
+
     except Exception as e:
         firebase_service.update_document("shorts", short_id, {
             "pending_operation": False,
             "auto_generate": False
         })
-        return jsonify(
-            {
-                "status": "error",
-                "data": {
-                    "short_id": short_id,
-                    "error": str(e)
-                },
-                "message": "Failed to edit transcript"
-            }), 400
+        # Update request log for unexpected error
+        firebase_service.update_document("requests", request_id, {
+            "logs": firestore.firestore.ArrayUnion([{
+                "message": f"Temporal segmentation failed: Unexpected error - {str(e)}",
+                "timestamp": firestore.firestore.SERVER_TIMESTAMP
+            }])
+        })
+        return jsonify({
+            "status": "error",
+            "data": {
+                "request_id": request_id,
+                "short_id": short_id,
+                "error": str(e)
+            },
+            "message": "Failed to process temporal segmentation"
+        }), 500

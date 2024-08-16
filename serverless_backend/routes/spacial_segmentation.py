@@ -11,7 +11,7 @@ from serverless_backend.services.video_audio_merger import VideoAudioMerger
 from serverless_backend.services.email.brevo_email_service import EmailService
 from serverless_backend.services.firebase import FirebaseService
 from serverless_backend.services.video_analyser.video_analyser import VideoAnalyser
-from firebase_admin import auth
+from firebase_admin import auth, firestore
 import cv2
 import tempfile
 from flask import Blueprint, jsonify
@@ -29,48 +29,71 @@ def get_user_email(uid):
 
 spacial_segmentation = Blueprint("spacial_segmentation", __name__)
 
-@spacial_segmentation.route("/v1/determine-boundaries/<short_id>", methods=['GET'])
-def determine_boundaries(short_id):
+@spacial_segmentation.route("/v1/determine-boundaries/<request_id>", methods=['GET'])
+def determine_boundaries(request_id):
+    firebase_services = FirebaseService()
+    video_analyser = VideoAnalyser()
+
     try:
-        firebase_services = FirebaseService()
-        video_analyser = VideoAnalyser()
+        request_doc = firebase_services.get_document("requests", request_id)
+        if not request_doc:
+            return jsonify({"status": "error", "message": "Request not found"}), 404
+
+        short_id = request_doc.get('shortId')
+        if not short_id:
+            return jsonify({"status": "error", "message": "Short ID not found in request"}), 400
+
         short_doc = firebase_services.get_document("shorts", short_id)
-        update_progress = lambda x: firebase_services.update_document("shorts", short_id, {"update_progress": x})
-        update_message = lambda x: firebase_services.update_document("shorts", short_id,
-                                                                    {"progress_message": x, "last_updated": datetime.now()})
+        if not short_doc:
+            return jsonify({"status": "error", "message": "Short document not found"}), 404
+
+        def update_progress(progress):
+            firebase_services.update_document("shorts", short_id, {"update_progress": progress})
+            firebase_services.update_document("requests", request_id, {"progress": progress})
+
+        def update_message(message):
+            firebase_services.update_document("shorts", short_id, {
+                "progress_message": message,
+                "last_updated": firestore.firestore.SERVER_TIMESTAMP
+            })
+            firebase_services.update_message(request_id, message)
 
         update_message("Retrieved the document")
         firebase_services.update_document("shorts", short_id, {"pending_operation": True})
         update_progress(20)
+
         valid_short, error_message = parse_and_verify_short(short_doc)
 
         if not valid_short:
+            update_message(f"Invalid short document: {error_message}")
             firebase_services.update_document("shorts", short_id, {"pending_operation": False})
-            return jsonify(
-                {
-                    "status": "error",
-                    "data": {
-                        "short_id": short_id,
-                        "error": error_message
-                    },
-                    "message": "Failed to find camera cuts in video"
-                }), 400
+            return jsonify({
+                "status": "error",
+                "data": {
+                    "request_id": request_id,
+                    "short_id": short_id,
+                    "error": error_message
+                },
+                "message": "Failed to find camera cuts in video"
+            }), 400
 
         update_message("Downloading the clipped video")
         update_progress(30)
-        video_path = short_doc['short_clipped_video']
+        video_path = short_doc.get('short_clipped_video')
 
         if video_path is None:
+            error_message = "No video clipped yet..."
+            update_message(error_message)
             firebase_services.update_document("shorts", short_id, {"pending_operation": False})
-            return jsonify(
-                {
-                    "status": "error",
-                    "data": {
-                        "short_id": short_id,
-                        "error":"No video clipped yet..."
-                    },
-                    "message": "Failed to find camera cuts in video"
-                }), 400
+            return jsonify({
+                "status": "error",
+                "data": {
+                    "request_id": request_id,
+                    "short_id": short_id,
+                    "error": error_message
+                },
+                "message": "Failed to find camera cuts in video"
+            }), 400
 
         update_progress(50)
         update_message("Getting temporary file")
@@ -80,6 +103,7 @@ def determine_boundaries(short_id):
         diff, last_frame, fps, height, width = video_analyser.get_differences(temp_file, update_progress_diff)
         cuts = video_analyser.get_camera_cuts(diff)
         update_message("Completed Download")
+
 
         firebase_services.update_document(
             "shorts",
@@ -96,61 +120,91 @@ def determine_boundaries(short_id):
             }
         )
 
-        return jsonify(
-            {
-                "status": "success",
-                "data": {
-                    "short_id": short_id,
-                    'cuts': cuts,
-                    "visual_difference": json.dumps({ "frame_differences": diff }),
-                    "total_frame_count": last_frame,
-                    "fps": fps,
-                    "height": height,
-                    "width": width,
-                },
-                "message": "Successfully determined camera cuts in video"
-            }), 200
+        update_message("Successfully determined camera cuts in video")
+        update_progress(100)
+
+        firebase_services.create_short_request(
+            "v1/get-bounding-boxes",
+            short_id,
+            request_doc.get('uid', 'SERVER REQUEST')
+        )
+
+        return jsonify({
+            "status": "success",
+            "data": {
+                "request_id": request_id,
+                "short_id": short_id,
+                'cuts': cuts,
+                "visual_difference": json.dumps({ "frame_differences": diff }),
+                "total_frame_count": last_frame,
+                "fps": fps,
+                "height": height,
+                "width": width,
+            },
+            "message": "Successfully determined camera cuts in video"
+        }), 200
+
     except Exception as e:
-        return jsonify(
-            {
-                "status": "error",
-                "data": {
-                    "short_id": short_id,
-                    "error": str(e)
-                },
-                "message": "Failed to find camera cuts in video"
-            }), 400
+        error_message = f"Failed to find camera cuts in video: {str(e)}"
+        update_message(error_message)
+        firebase_services.update_document("shorts", short_id, {"pending_operation": False})
+        return jsonify({
+            "status": "error",
+            "data": {
+                "request_id": request_id,
+                "short_id": short_id,
+                "error": str(e)
+            },
+            "message": error_message
+        }), 500
 
 
 
-@spacial_segmentation.route("/v1/get-bounding-boxes/<short_id>", methods=['GET'])
-def get_bounding_boxes(short_id):
+@spacial_segmentation.route("/v1/get-bounding-boxes/<request_id>", methods=['GET'])
+def get_bounding_boxes(request_id):
     firebase_services = FirebaseService()
     try:
+        request_doc = firebase_services.get_document("requests", request_id)
+        if not request_doc:
+            return jsonify({"status": "error", "message": "Request not found"}), 404
+
+        short_id = request_doc.get('shortId')
+        if not short_id:
+            return jsonify({"status": "error", "message": "Short ID not found in request"}), 400
+
         short_doc = firebase_services.get_document("shorts", short_id)
+        if not short_doc:
+            return jsonify({"status": "error", "message": "Short document not found"}), 404
+
         bounding_box_generator = BoundingBoxGenerator(step_size=10)
-        update_progress = lambda x: firebase_services.update_document("shorts", short_id, {"update_progress": x})
-        update_message = lambda x: firebase_services.update_document("shorts", short_id,
-                                                                     {"progress_message": x,
-                                                                      "last_updated": datetime.now()})
 
-        auto_generate = False
+        def update_progress(progress):
+            firebase_services.update_document("shorts", short_id, {"update_progress": progress})
+            firebase_services.update_document("requests", request_id, {"progress": progress})
 
-        if "auto_generate" in short_doc.keys():
-            auto_generate = short_doc['auto_generate']
+        def update_message(message):
+            firebase_services.update_document("shorts", short_id, {
+                "progress_message": message,
+                "last_updated": firestore.firestore.SERVER_TIMESTAMP
+            })
+            firebase_services.update_message(request_id, message)
+
+        auto_generate = short_doc.get('auto_generate', False)
 
         update_message("Retrieved the document")
         firebase_services.update_document("shorts", short_id, {"pending_operation": True})
 
         update_message("Checking short document is correct")
-        if short_doc["short_video_saliency"] is None:
+        if short_doc.get("short_video_saliency") is None:
+            error_message = "Short video does not have saliency"
+            update_message(error_message)
             firebase_services.update_document("shorts", short_id, {
                 "pending_operation": False,
                 "auto_generate": False
             })
             return jsonify({
                 "status": "error",
-                "data": {"short_id": short_id, "error": "Short video does not have saliency"},
+                "data": {"request_id": request_id, "short_id": short_id, "error": error_message},
                 "message": "Failed to find bounding boxes"
             }), 400
 
@@ -158,8 +212,10 @@ def get_bounding_boxes(short_id):
         update_progress(20)
         short_video_saliency = firebase_services.download_file_to_temp(short_doc['short_video_saliency'])
 
-        if 'cuts' not in short_doc.keys():
-            determine_boundaries(short_id)
+        if 'cuts' not in short_doc:
+            update_message("Determining boundaries...")
+            # Assuming determine_boundaries has been updated to use request_id
+            determine_boundaries(request_id)
 
         short_doc = firebase_services.get_document("shorts", short_id)
         cuts = short_doc['cuts']
@@ -192,33 +248,29 @@ def get_bounding_boxes(short_id):
         update_progress(90)
 
         update_progress(100)
+        update_message("Successfully found bounding boxes")
+
+        firebase_services.update_document(
+            "shorts",
+            short_id,
+            {
+                "bounding_boxes": json.dumps(interpolated_boxes),
+                "box_type": ['standard_tiktok' for _ in range(len(interpolated_boxes['standard_tiktok']))],
+                "pending_operation": False,
+            }
+        )
 
         if auto_generate:
-            firebase_services.update_document(
-                "shorts",
+            firebase_services.create_short_request(
+                "v1/generate-a-roll",
                 short_id,
-                {
-                    "bounding_boxes": json.dumps(interpolated_boxes),
-                    "box_type": ['standard_tiktok' for _ in range(len(interpolated_boxes['standard_tiktok']))],
-                    "pending_operation": False,
-                    "short_status": "Generate A-Roll",
-                }
+                request_doc.get('uid', 'SERVER REQUEST')
             )
-        else:
-            firebase_services.update_document(
-                "shorts",
-                short_id,
-                {
-                    "bounding_boxes": json.dumps(interpolated_boxes),
-                    "box_type": ['standard_tiktok' for _ in range(len(interpolated_boxes['standard_tiktok']))],
-                    "pending_operation": False,
-                }
-            )
-
 
         return jsonify({
             "status": "success",
             "data": {
+                "request_id": request_id,
                 "short_id": short_id,
                 "bounding_boxes": json.dumps(interpolated_boxes),
                 "box_type": ['standard_tiktok' for _ in range(len(interpolated_boxes['standard_tiktok']))]
@@ -227,15 +279,17 @@ def get_bounding_boxes(short_id):
         }), 200
 
     except Exception as e:
+        error_message = f"Failed to find bounding boxes: {str(e)}"
+        update_message(error_message)
         firebase_services.update_document("shorts", short_id, {
             "pending_operation": False,
             "auto_generate": False
         })
         return jsonify({
             "status": "error",
-            "data": {"short_id": short_id, "error": str(e)},
-            "message": "Failed to find bounding boxes"
-        }), 400
+            "data": {"request_id": request_id, "short_id": short_id, "error": str(e)},
+            "message": error_message
+        }), 500
 
 
 def merge_consecutive_cuts(cuts):
@@ -307,42 +361,57 @@ def add_audio_to_video(video_path, audio_path):
 
     return output_path
 
-@spacial_segmentation.route("/v1/create-cropped-video/<short_id>", methods=['GET'])
-def create_cropped_video(short_id):
+
+@spacial_segmentation.route("/v1/create-cropped-video/<request_id>", methods=['GET'])
+def create_cropped_video(request_id):
+    firebase_service = FirebaseService()
     try:
-        firebase_service = FirebaseService()
+        request_doc = firebase_service.get_document("requests", request_id)
+        if not request_doc:
+            return jsonify({"status": "error", "message": "Request not found"}), 404
+
+        short_id = request_doc.get('shortId')
+        if not short_id:
+            return jsonify({"status": "error", "message": "Short ID not found in request"}), 400
+
         short_doc = firebase_service.get_document("shorts", short_id)
+        if not short_doc:
+            return jsonify({"status": "error", "message": "Short document not found"}), 404
+
         text_service = AddTextToVideoService()
         video_audio_merger = VideoAudioMerger()
 
-        update_progress = lambda x: firebase_service.update_document("shorts", short_id, {"update_progress": x})
-        update_message = lambda x: firebase_service.update_document("shorts", short_id,
-                                                                     {"progress_message": x,
-                                                                      "last_updated": datetime.now()})
+        def update_progress(progress):
+            firebase_service.update_document("shorts", short_id, {"update_progress": progress})
+            firebase_service.update_document("requests", request_id, {"progress": progress})
+
+        def update_message(message):
+            firebase_service.update_document("shorts", short_id, {
+                "progress_message": message,
+                "last_updated": firestore.firestore.SERVER_TIMESTAMP
+            })
+            firebase_service.update_message(request_id, message)
+
         update_temp_progress = lambda x, start, length: update_progress(start + (length * (x / 100)))
 
-        auto_generate = False
-
-        if "auto_generate" in short_doc.keys():
-            auto_generate = short_doc['auto_generate']
+        auto_generate = short_doc.get('auto_generate', False)
 
         update_message("Retrieved the document")
         firebase_service.update_document("shorts", short_id, {"pending_operation": True})
 
         update_progress(20)
-        if not "short_b_roll" in short_doc.keys() and not "short_a_roll" in short_doc.keys():
+        if "short_b_roll" not in short_doc and "short_a_roll" not in short_doc:
             update_message("B Roll Does Not Exist!")
             firebase_service.update_document("shorts", short_id, {"pending_operation": False})
-            return jsonify(
-                {
-                    "status": "error",
-                    "data": {
-                        "short_id": short_id,
-                        "error": "No b roll combined found"
-                    },
-                    "message": "Failed to preview video"
-                }), 400
-
+            return jsonify({
+                "status": "error",
+                "data": {
+                    "request_id": request_id,
+                    "short_id": short_id,
+                    "error": "No b roll combined found"
+                },
+                "message": "Failed to preview video"
+            }), 400
 
         update_message("Accessed the short document")
         clipped_footage = short_doc.get("short_b_roll", short_doc.get("short_a_roll", ""))
@@ -350,34 +419,35 @@ def create_cropped_video(short_id):
         output_path = firebase_service.download_file_to_temp(clipped_footage)
         update_progress(30)
 
-
         # Get video properties
         COLOUR = (13, 255, 0)
         SHADOW_COLOUR = (192, 255, 189)
         LOGO = "ViraNova"
 
-
-        if 'short_title_top' in short_doc.keys():
+        if 'short_title_top' in short_doc:
             update_message("Added top text")
             update_progress(65)
             output_path = text_service.add_text_centered(output_path, short_doc['short_title_top'].upper(), 1.7,
-                                                         thickness='Bold', color=(255, 255, 255), shadow_color=(0, 0, 0),
+                                                         thickness='Bold', color=(255, 255, 255),
+                                                         shadow_color=(0, 0, 0),
                                                          shadow_offset=(1, 1), outline=True, outline_color=(0, 0, 0),
                                                          outline_thickness=1, offset=(0, 0.15))
 
-        if 'short_title_bottom' in short_doc.keys():
+        if 'short_title_bottom' in short_doc:
             update_message("Added bottom text")
             update_progress(70)
-            output_path = text_service.add_text_centered(output_path, short_doc['short_title_bottom'].upper(), 1.7, thickness='Bold',
-                                                     color=COLOUR, shadow_color=SHADOW_COLOUR,
-                                                     shadow_offset=(1, 1), outline=False, outline_color=(0, 0, 0),
-                                                     outline_thickness=1, offset=(0, 0.18))
+            output_path = text_service.add_text_centered(output_path, short_doc['short_title_bottom'].upper(), 1.7,
+                                                         thickness='Bold',
+                                                         color=COLOUR, shadow_color=SHADOW_COLOUR,
+                                                         shadow_offset=(1, 1), outline=False, outline_color=(0, 0, 0),
+                                                         outline_thickness=1, offset=(0, 0.18))
 
         output_path = text_service.add_text_centered(output_path, LOGO, 1,
                                                      thickness='Bold',
-                                                     color=COLOUR, shadow_color=(0,0,0),
+                                                     color=COLOUR, shadow_color=(0, 0, 0),
                                                      shadow_offset=(1, 1), outline=False, outline_color=(0, 0, 0),
                                                      outline_thickness=1, offset=(0, 0.1))
+
         add_transcript = True
         if add_transcript:
             segment_document = firebase_service.get_document('topical_segments', short_doc['segment_id'])
@@ -385,14 +455,14 @@ def create_cropped_video(short_id):
             try:
                 segment_document_words = parse_segment_words(segment_document)
             except ValueError as e:
-                update_message(f"Error parsing segment words: {str(e)}")
+                error_message = f"Error parsing segment words: {str(e)}"
+                update_message(error_message)
                 firebase_service.update_document("shorts", short_id, {"pending_operation": False})
                 return jsonify({
                     "status": "error",
-                    "data": {"short_id": short_id, "error": str(e)},
+                    "data": {"request_id": request_id, "short_id": short_id, "error": error_message},
                     "message": "Failed to parse segment words"
                 }), 400
-
 
             update_message("Read Segment Words")
             update_progress(75)
@@ -439,7 +509,7 @@ def create_cropped_video(short_id):
                     current_start_time = start_time
                     current_end_time = end_time
                 update_message("Added words: " + str(combined_text))
-                update_temp_progress(index/len(adjusted_words_to_handle) * 100, 75, 15)
+                update_temp_progress(index / len(adjusted_words_to_handle) * 100, 75, 15)
 
             update_message("Adding transcript to video")
             # update start and end_times  relation to that new clipped video
@@ -463,15 +533,15 @@ def create_cropped_video(short_id):
             update_progress(95)
 
         update_message("Creating Updated short audio file")
-        generate_test_audio_for_short(short_id)
+        generate_test_audio_for_short(request_id)  # Assuming this function has been updated to use request_id
         update_message("Adding audio now")
-        firebase_service = FirebaseService()
         short_doc = firebase_service.get_document("shorts", short_id)
 
-        audio_path = firebase_service.download_file_to_temp(short_doc['temp_audio_file'], short_doc['temp_audio_file'].split(".")[-1])
+        audio_path = firebase_service.download_file_to_temp(short_doc['temp_audio_file'],
+                                                            short_doc['temp_audio_file'].split(".")[-1])
         output_path = add_audio_to_video(output_path, audio_path)
 
-        if "background_audio" in short_doc.keys():
+        if "background_audio" in short_doc:
             background_audio = firebase_service.get_document("stock-audio", short_doc['background_audio'])
             temp_audio_location = firebase_service.download_file_to_temp(background_audio['storageLocation'])
             output_path = video_audio_merger.merge_audio_to_video(output_path, temp_audio_location,
@@ -482,7 +552,8 @@ def create_cropped_video(short_id):
         destination_blob_name = "finished-short/" + short_id + "-" + "".join(clipped_footage.split("/")[1:])
         firebase_service.upload_file_from_temp(output_path, destination_blob_name)
 
-        firebase_service.update_document("shorts", short_id, {"finished_short_location": destination_blob_name, "finished_short_fps": short_doc['fps']})
+        firebase_service.update_document("shorts", short_id, {"finished_short_location": destination_blob_name,
+                                                              "finished_short_fps": short_doc['fps']})
 
         update_message("Finished Video!")
         firebase_service.update_document("shorts", short_id, {
@@ -490,30 +561,35 @@ def create_cropped_video(short_id):
             "auto_generate": False
         })
 
-        if "uid" in short_doc.keys():
+        if "uid" in short_doc:
             email = get_user_email(short_doc['uid'])
             email_service = EmailService()
             email_service.send_video_ready_notification(email, short_doc['short_id'], '')
 
-        return jsonify(
-            {
-                "status": "success",
-                "data": {
-                    "short_id": short_id,
-                    "finished_short_location": destination_blob_name,
-                    "finished_short_fps": short_doc['fps']
-                },
-                "message": "Successfully previewed final video"
-            }), 200
+        return jsonify({
+            "status": "success",
+            "data": {
+                "request_id": request_id,
+                "short_id": short_id,
+                "finished_short_location": destination_blob_name,
+                "finished_short_fps": short_doc['fps']
+            },
+            "message": "Successfully previewed final video"
+        }), 200
+
     except Exception as e:
-        return jsonify(
-            {
-                "status": "error",
-                "data": {
-                    "short_id": short_id,
-                    "error": str(e)
-                },
-                "message": "Failed to preview video"
-            }), 400
-
-
+        error_message = f"Failed to preview video: {str(e)}"
+        update_message(error_message)
+        firebase_service.update_document("shorts", short_id, {
+            "pending_operation": False,
+            "auto_generate": False
+        })
+        return jsonify({
+            "status": "error",
+            "data": {
+                "request_id": request_id,
+                "short_id": short_id,
+                "error": str(e)
+            },
+            "message": error_message
+        }), 500

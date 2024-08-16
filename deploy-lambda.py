@@ -6,6 +6,7 @@ import time
 import json
 import base64
 import hashlib
+import random
 import os
 from dotenv import load_dotenv
 
@@ -116,6 +117,16 @@ def build_docker_image(repository_uri, dockerfile_path="Dockerfile"):
         print(f"Docker push failed: {str(e)}")
         raise
 
+
+def delete_resource(api_id, resource_id):
+    try:
+        apigateway_client.delete_resource(
+            restApiId=api_id,
+            resourceId=resource_id
+        )
+        print(f"Deleted resource with ID: {resource_id}")
+    except Exception as e:
+        print(f"Error deleting resource: {str(e)}")
 
 # Calculate the digest of the local Docker image
 def calculate_local_image_digest(image):
@@ -265,6 +276,12 @@ def create_or_update_api_gateway(lambda_function_name, api_name, stage_name, rou
             if not part.strip():  # Skip empty path parts
                 continue
 
+            # Check for existing {short_id} resource and delete it
+            existing_short_id_resource = get_resource_id(api_id, current_parent_id, '{short_id}')
+            if existing_short_id_resource:
+                delete_resource(api_id, existing_short_id_resource)
+                print(f"Deleted existing {{short_id}} resource")
+
             resource_id = get_resource_id(api_id, current_parent_id, part)
             if not resource_id:
                 try:
@@ -331,7 +348,6 @@ def create_or_update_api_gateway(lambda_function_name, api_name, stage_name, rou
     print(f"API Gateway URL: {invoke_url}")
 
     return invoke_url, api_id
-
 
 def remove_existing_permissions():
     try:
@@ -410,6 +426,7 @@ def deploy_api_gateway(api_id, stage_name, max_retries=5, initial_delay=1):
                 raise
     print(f"Failed to deploy API after {max_retries} attempts")
     raise Exception("Max retries exceeded for API deployment")
+
 def update_lambda_permissions_and_deploy():
     api_id = get_existing_api_id(api_name)
     if api_id:
@@ -442,13 +459,13 @@ def main():
     create_or_update_lambda_function(repository_uri, lambda_function_name, role_arn)
 
     # List routes in the Flask app
-    # from serverless_backend.main import app, list_routes
-    # routes = list_routes(app)
-    # print(routes)
-    #
-    # api_gateway_url, api_id = create_or_update_api_gateway(lambda_function_name, api_name, stage_name, routes)
-    # print(f'Your Lambda function can be called at: {api_gateway_url}')
-    # update_lambda_permissions_and_deploy()
+    from serverless_backend.main import app, list_routes
+    routes = list_routes(app)
+    print(routes)
+
+    api_gateway_url, api_id = create_or_update_api_gateway(lambda_function_name, api_name, stage_name, routes)
+    print(f'Your Lambda function can be called at: {api_gateway_url}')
+    update_lambda_permissions_and_deploy()
 
 if __name__ == '__main__':
     main()

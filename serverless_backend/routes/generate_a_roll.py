@@ -3,6 +3,8 @@ import os
 import tempfile
 import json
 from datetime import datetime
+
+from firebase_admin import firestore
 from flask import Blueprint, jsonify
 
 from serverless_backend.routes.generate_test_audio import generate_test_audio_for_short
@@ -13,19 +15,35 @@ from serverless_backend.services.bounding_box_generator.video_cropper import Vid
 
 generate_a_roll = Blueprint("generate_a_roll", __name__)
 
-@generate_a_roll.route("/v1/generate-a-roll/<short_id>", methods=['GET'])
-def generate_a_roll_short(short_id):
+@generate_a_roll.route("/v1/generate-a-roll/<request_id>", methods=['GET'])
+def generate_a_roll_short(request_id):
     firebase_services = FirebaseService()
+    request_doc = firebase_services.get_document("requests", request_id)
+    if not request_doc:
+        return jsonify({"status": "error", "message": "Request not found"}), 404
+
+    short_id = request_doc.get('shortId')
+    if not short_id:
+        return jsonify({"status": "error", "message": "Short ID not found in request"}), 400
+
     try:
+
         short_doc = firebase_services.get_document("shorts", short_id)
-        update_progress = lambda x: firebase_services.update_document("shorts", short_id, {"update_progress": x})
-        update_message = lambda x: firebase_services.update_document("shorts", short_id,
-                                                                    {"progress_message": x, "last_updated": datetime.now()})
+        if not short_doc:
+            return jsonify({"status": "error", "message": "Short document not found"}), 404
 
-        auto_generate = False
+        def update_progress(progress):
+            firebase_services.update_document("shorts", short_id, {"update_progress": progress})
+            firebase_services.update_document("requests", request_id, {"progress": progress})
 
-        if "auto_generate" in short_doc.keys():
-            auto_generate = short_doc['auto_generate']
+        def update_message(message):
+            firebase_services.update_document("shorts", short_id, {
+                "progress_message": message,
+                "last_updated": firestore.firestore.SERVER_TIMESTAMP
+            })
+            firebase_services.update_message(request_id, message)
+
+        auto_generate = short_doc.get('auto_generate', False)
 
         update_message("Retrieved the document")
         firebase_services.update_document("shorts", short_id, {"pending_operation": True})
@@ -33,19 +51,20 @@ def generate_a_roll_short(short_id):
         valid_short, error_message = parse_and_verify_short(short_doc)
 
         if not valid_short:
+            update_message(f"Invalid short document: {error_message}")
             firebase_services.update_document("shorts", short_id, {
                 "pending_operation": False,
                 "auto_generate": False,
             })
-            return jsonify(
-                {
-                    "status": "error",
-                    "data": {
-                        "short_id": short_id,
-                        "error": error_message
-                    },
-                    "message": "Failed to generate A-roll"
-                }), 400
+            return jsonify({
+                "status": "error",
+                "data": {
+                    "request_id": request_id,
+                    "short_id": short_id,
+                    "error": error_message
+                },
+                "message": "Failed to generate A-roll"
+            }), 400
 
         # Parse bounding boxes
         bounding_boxes = json.loads(short_doc.get('bounding_boxes', '{}'))
@@ -78,12 +97,11 @@ def generate_a_roll_short(short_id):
         update_progress(80)
 
         update_message("Creating Updated short audio file")
-        generate_test_audio_for_short(short_id)
+        generate_test_audio_for_short(request_id)  # Assuming this function has been updated to use request_id
         update_message("Adding audio now")
-        firebase_service = FirebaseService()
-        short_doc = firebase_service.get_document("shorts", short_id)
+        short_doc = firebase_services.get_document("shorts", short_id)
 
-        audio_path = firebase_service.download_file_to_temp(short_doc['temp_audio_file'], short_doc['temp_audio_file'].split(".")[-1])
+        audio_path = firebase_services.download_file_to_temp(short_doc['temp_audio_file'], short_doc['temp_audio_file'].split(".")[-1])
         output_path = add_audio_to_video(output_path, audio_path)
 
         # Upload the cropped video to Firebase Storage
@@ -93,44 +111,47 @@ def generate_a_roll_short(short_id):
         update_message("A-roll uploaded to storage")
         update_progress(100)
 
-        # Update the short document with the new A-roll location
-        if auto_generate:
-            firebase_services.update_document("shorts", short_id, {
-                "short_a_roll": destination_blob_name,
-                "pending_operation": False,
-                "short_status": "Generate B-Roll"
-            })
-        else:
-            firebase_services.update_document("shorts", short_id, {
-                "short_a_roll": destination_blob_name,
-                "pending_operation": False,
-            })
-
+        firebase_services.update_document("shorts", short_id, {
+            "short_a_roll": destination_blob_name,
+            "pending_operation": False,
+        })
 
         # Clean up temporary files
         os.remove(temp_input_path)
         video_cropper.clean_up(output_path)
 
-        return jsonify(
-            {
-                "status": "success",
-                "data": {
-                    "short_id": short_id,
-                    "a_roll_path": destination_blob_name,
-                },
-                "message": "Successfully generated and uploaded A-roll"
-            }), 200
+        update_message("A-roll generation completed successfully")
+
+
+        if auto_generate:
+            firebase_services.create_short_request(
+                "v1/create-cropped-video",
+                short_id,
+                request_doc.get('uid', "SERVER REQUEST")
+            )
+
+        return jsonify({
+            "status": "success",
+            "data": {
+                "request_id": request_id,
+                "short_id": short_id,
+                "a_roll_path": destination_blob_name,
+            },
+            "message": "Successfully generated and uploaded A-roll"
+        }), 200
+
     except Exception as e:
+        error_message = f"Failed to generate A-roll: {str(e)}"
         firebase_services.update_document("shorts", short_id, {
             "pending_operation": False,
             "auto_generate": False,
         })
-        return jsonify(
-            {
-                "status": "error",
-                "data": {
-                    "short_id": short_id,
-                    "error": str(e)
-                },
-                "message": "Failed to generate A-roll"
-            }), 400
+        return jsonify({
+            "status": "error",
+            "data": {
+                "request_id": request_id,
+                "short_id": short_id,
+                "error": str(e)
+            },
+            "message": error_message
+        }), 500
