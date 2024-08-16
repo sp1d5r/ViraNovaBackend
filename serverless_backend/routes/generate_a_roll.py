@@ -94,15 +94,18 @@ def generate_a_roll_short(short_id):
         update_progress(100)
 
         # Update the short document with the new A-roll location
-        firebase_services.update_document("shorts", short_id, {
-            "short_a_roll": destination_blob_name,
-            "pending_operation": False
-        })
-
         if auto_generate:
             firebase_services.update_document("shorts", short_id, {
+                "short_a_roll": destination_blob_name,
+                "pending_operation": False,
                 "short_status": "Generate B-Roll"
             })
+        else:
+            firebase_services.update_document("shorts", short_id, {
+                "short_a_roll": destination_blob_name,
+                "pending_operation": False,
+            })
+
 
         # Clean up temporary files
         os.remove(temp_input_path)

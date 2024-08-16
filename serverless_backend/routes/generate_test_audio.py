@@ -162,12 +162,17 @@ def generate_test_audio_for_short(short_id):
 
             update_message("Uploaded Result")
             update_progress(100)
-            firebase_service.update_document('shorts', short_id, {'temp_audio_file': new_blob_location})
-            firebase_service.update_document("shorts", short_id, {"pending_operation": False})
 
             if auto_generate:
                 firebase_service.update_document("shorts", short_id, {
+                    'temp_audio_file': new_blob_location,
+                    "pending_operation": False,
                     "short_status": "Create Short Video",
+                })
+            else:
+                firebase_service.update_document("shorts", short_id, {
+                    'temp_audio_file': new_blob_location,
+                    "pending_operation": False,
                 })
 
             return jsonify(

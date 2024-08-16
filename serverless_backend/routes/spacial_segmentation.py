@@ -80,6 +80,7 @@ def determine_boundaries(short_id):
         diff, last_frame, fps, height, width = video_analyser.get_differences(temp_file, update_progress_diff)
         cuts = video_analyser.get_camera_cuts(diff)
         update_message("Completed Download")
+
         firebase_services.update_document(
             "shorts",
             short_id,
@@ -91,10 +92,10 @@ def determine_boundaries(short_id):
                 "height": height,
                 "width": width,
                 "short_status": "Get Bounding Boxes",
+                "pending_operation": False
             }
         )
 
-        firebase_services.update_document("shorts", short_id, {"pending_operation": False})
         return jsonify(
             {
                 "status": "success",
@@ -191,22 +192,29 @@ def get_bounding_boxes(short_id):
         update_progress(90)
 
         update_progress(100)
-        firebase_services.update_document("shorts", short_id, {
-            "pending_operation": False,
-        })
-        firebase_services.update_document(
-            "shorts",
-            short_id,
-            {
-                "bounding_boxes": json.dumps(interpolated_boxes),
-                "box_type": ['standard_tiktok' for _ in range(len(interpolated_boxes['standard_tiktok']))]
-            }
-        )
 
         if auto_generate:
-            firebase_services.update_document("shorts", short_id, {
-                "short_status": "Generate A-Roll",
-            })
+            firebase_services.update_document(
+                "shorts",
+                short_id,
+                {
+                    "bounding_boxes": json.dumps(interpolated_boxes),
+                    "box_type": ['standard_tiktok' for _ in range(len(interpolated_boxes['standard_tiktok']))],
+                    "pending_operation": False,
+                    "short_status": "Generate A-Roll",
+                }
+            )
+        else:
+            firebase_services.update_document(
+                "shorts",
+                short_id,
+                {
+                    "bounding_boxes": json.dumps(interpolated_boxes),
+                    "box_type": ['standard_tiktok' for _ in range(len(interpolated_boxes['standard_tiktok']))],
+                    "pending_operation": False,
+                }
+            )
+
 
         return jsonify({
             "status": "success",
