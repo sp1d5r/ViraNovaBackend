@@ -182,47 +182,73 @@ class VideoCropper:
         with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp_file:
             output_path = tmp_file.name
 
-        fourcc = cv2.VideoWriter_fourcc(*'avc1')
-        out = cv2.VideoWriter(output_path, fourcc, self.fps, (self.target_width, self.target_height))
+        # Create a temporary file for raw video data
+        with tempfile.NamedTemporaryFile(suffix='.yuv', delete=False) as raw_file:
+            raw_path = raw_file.name
 
-        frame_idx = 0
-        while True:
-            ret, frame = self.video.read()
-            if not ret:
-                break
+        # Process frames and write raw video data
+        with open(raw_path, 'wb') as raw_out:
+            frame_idx = 0
+            while True:
+                ret, frame = self.video.read()
+                if not ret:
+                    break
 
-            if frame is None or frame.size == 0:
-                print(f"Empty or invalid frame at index {frame_idx}. Skipping...")
+                if frame is None or frame.size == 0:
+                    print(f"Empty or invalid frame at index {frame_idx}. Skipping...")
+                    frame_idx += 1
+                    continue
+
+                frame_type, boxes = self._get_bounding_box(frame_idx)
+
+                processed_frame = None
+                if frame_type == "standard_tiktok":
+                    processed_frame = self._process_standard_tiktok(frame, boxes[0])
+                elif frame_type == "two_boxes":
+                    processed_frame = self._process_two_boxes(frame, boxes, vertical=True)
+                elif frame_type == "two_boxes_reversed":
+                    processed_frame = self._process_two_boxes(frame, boxes, vertical=True, reverse=True)
+                elif frame_type == "picture_in_picture":
+                    processed_frame = self._process_picture_in_picture(frame, boxes[0])
+                elif frame_type == "reaction_box":
+                    processed_frame = self._process_reaction_box(frame, boxes)
+                else:
+                    print(f"Unknown frame type: {frame_type}. Skipping...")
+
+                if processed_frame is not None:
+                    # Convert to YUV and write to raw file
+                    yuv = cv2.cvtColor(processed_frame, cv2.COLOR_BGR2YUV_I420)
+                    raw_out.write(yuv.tobytes())
+                else:
+                    print(f"Failed to process frame {frame_idx}. Skipping...")
+
                 frame_idx += 1
-                continue
-
-            frame_type, boxes = self._get_bounding_box(frame_idx)
-
-            processed_frame = None
-            if frame_type == "standard_tiktok":
-                processed_frame = self._process_standard_tiktok(frame, boxes[0])
-            elif frame_type == "two_boxes":
-                processed_frame = self._process_two_boxes(frame, boxes, vertical=True)
-            elif frame_type == "two_boxes_reversed":
-                processed_frame = self._process_two_boxes(frame, boxes, vertical=True, reverse=True)
-            elif frame_type == "picture_in_picture":
-                processed_frame = self._process_picture_in_picture(frame, boxes[0])
-            elif frame_type == "reaction_box":
-                processed_frame = self._process_reaction_box(frame, boxes)
-            else:
-                print(f"Unknown frame type: {frame_type}. Skipping...")
-
-            if processed_frame is not None:
-                out.write(processed_frame)
-            else:
-                print(f"Failed to process frame {frame_idx}. Skipping...")
-
-            frame_idx += 1
-            if frame_idx % 100 == 0:
-                print(f"Processed {frame_idx}/{self.total_frames} frames")
+                if frame_idx % 100 == 0:
+                    print(f"Processed {frame_idx}/{self.total_frames} frames")
 
         self.video.release()
-        out.release()
+
+        # Use FFmpeg to encode the raw video data
+        ffmpeg_command = [
+            'ffmpeg',
+            '-f', 'rawvideo',
+            '-vcodec', 'rawvideo',
+            '-s', f'{self.target_width}x{self.target_height}',
+            '-pix_fmt', 'yuv420p',
+            '-r', str(self.fps),
+            '-i', raw_path,
+            '-c:v', 'libx264',
+            '-preset', 'ultrafast',
+            '-crf', '23',
+            '-y',
+            output_path
+        ]
+
+        subprocess.run(ffmpeg_command, check=True)
+
+        # Clean up the temporary raw video file
+        os.remove(raw_path)
+
         print(f"Cropped video saved to: {output_path}")
         return output_path
 

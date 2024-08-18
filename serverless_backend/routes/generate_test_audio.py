@@ -180,14 +180,19 @@ def generate_test_audio_for_short(request_id):
                 "pending_operation": False,
             })
 
-            # TODO:// implement this to create a new request
-        else:
-            firebase_service.update_document("shorts", short_id, {
-                'temp_audio_file': new_blob_location,
-                "pending_operation": False,
-            })
+        firebase_service.update_document("shorts", short_id, {
+            'temp_audio_file': new_blob_location,
+            "pending_operation": False,
+        })
 
         update_message("Test audio generation completed successfully")
+
+        if auto_generate:
+            firebase_service.create_short_request(
+                "v1/create-short-video",
+                short_id,
+                request_doc.get('uid', 'SERVER REQUEST')
+            )
 
         return jsonify({
             "status": "success",

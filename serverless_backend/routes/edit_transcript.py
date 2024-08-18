@@ -190,7 +190,7 @@ def perform_temporal_segmentation(request_id):
             firebase_service.create_short_request(
                 "v1/generate-test-audio",
                 short_id,
-                request_id.get('uid', 'SERVER REQUEST')
+                request_doc.get('uid', 'SERVER REQUEST')
 
             )
 
@@ -210,22 +210,10 @@ def perform_temporal_segmentation(request_id):
         }), 200
 
     except Exception as e:
-        firebase_service.update_document("shorts", short_id, {
-            "pending_operation": False,
-            "auto_generate": False
-        })
-        # Update request log for unexpected error
-        firebase_service.update_document("requests", request_id, {
-            "logs": firestore.firestore.ArrayUnion([{
-                "message": f"Temporal segmentation failed: Unexpected error - {str(e)}",
-                "timestamp": firestore.firestore.SERVER_TIMESTAMP
-            }])
-        })
         return jsonify({
             "status": "error",
             "data": {
                 "request_id": request_id,
-                "short_id": short_id,
                 "error": str(e)
             },
             "message": "Failed to process temporal segmentation"

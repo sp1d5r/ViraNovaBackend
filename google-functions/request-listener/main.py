@@ -47,40 +47,45 @@ def process_request(request_id, request_endpoint):
 
 def handle_request(event, context):
     """
-    Handle the creation or update of a request document.
+    Handle the creation of a request document.
     """
     db = firestore.Client()
 
     # Get the document that triggered the function
     doc_path = context.resource
-    request_doc = db.document(doc_path).get()
-    request_data = request_doc.to_dict()
-    request_id = doc_path.split('/')[-1]
+    doc_ref = db.document(doc_path)
 
-    if not request_data:
-        print(f"Error: Request {request_id} data is empty")
-        return
+    @firestore.transactional
+    def update_in_transaction(transaction):
+        doc = doc_ref.get(transaction=transaction)
+        request_data = doc.to_dict()
 
-    # Stage 1: Server acknowledgment
-    if 'requestAcknowledgedTimestamp' not in request_data:
-        print(f"Acknowledging new request: {request_id}")
-        db.document(doc_path).update({
-            "requestAcknowledgedTimestamp": firestore.SERVER_TIMESTAMP
-        })
-        return
+        if not request_data:
+            print(f"Error: Request {doc_ref.id} data is empty")
+            return
 
-    # Stage 2: Sending to Cloud Tasks queue
-    if 'serverStartedTimestamp' not in request_data:
+        # Check if the document has already been processed
+        if request_data.get('isProcessed', False):
+            print(f"Request {doc_ref.id} has already been processed. Skipping.")
+            return
+
+        # Mark the document as processed and update
+        request_data['isProcessed'] = True
+        request_data['requestAcknowledgedTimestamp'] = firestore.SERVER_TIMESTAMP
+        transaction.update(doc_ref, request_data)
+
         request_endpoint = request_data.get('requestEndpoint')
-
         if request_endpoint:
-            print(f"Processing request: {request_id} with endpoint: {request_endpoint}")
-            process_request(request_id, request_endpoint)
-
+            print(f"Processing request: {doc_ref.id} with endpoint: {request_endpoint}")
+            process_request(doc_ref.id, request_endpoint)
         else:
-            print(f"Error: Request {request_id} is missing requestEndpoint")
-    else:
-        print(f"Request {request_id} has already been sent to Cloud Tasks")
+            print(f"Error: Request {doc_ref.id} is missing requestEndpoint")
+
+    # Create a transaction object
+    transaction = db.transaction()
+
+    # Run the transaction
+    update_in_transaction(transaction)
 
 
 # Cloud Function entry point

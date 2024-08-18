@@ -78,7 +78,7 @@ class FirebaseService:
             # Prepare the new log entry
             new_log = {
                 "message": message,
-                "timestamp": fs.SERVER_TIMESTAMP
+                "timestamp": datetime.now()
             }
 
             # Get the current logs or initialize an empty list
@@ -91,7 +91,7 @@ class FirebaseService:
             doc_ref.update({
                 "logs": updated_logs,
                 "progress_message": message,
-                "last_updated": fs.SERVER_TIMESTAMP
+                "last_updated": datetime.now()
             })
 
             print(f"Successfully updated message for {document_id}")
@@ -124,6 +124,8 @@ class FirebaseService:
             "uid": uid,
             "shortId": short_id
         }
+
+        print("Creating request", request)
 
         # Add the document to Firestore
         try:

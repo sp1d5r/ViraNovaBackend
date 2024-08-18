@@ -336,28 +336,38 @@ def adjust_timestamps(merge_cuts, words, start_time):
 
 import subprocess
 import os
+import json
 
 def add_audio_to_video(video_path, audio_path):
-    # Generate output video path by adding "_with_audio" before the extension
     output_path = video_path.rsplit('.', 1)[0] + '_with_audio.mp4'
 
-    # Command to add audio to video using ffmpeg
     command = [
         'ffmpeg',
-        '-i', video_path,    # Input video file
-        '-i', audio_path,    # Input audio file
-        '-c:v', 'copy',      # Copy video as is
-        '-c:a', 'aac',       # Encode audio to AAC
+        '-i', video_path,
+        '-i', audio_path,
+        '-c:v', 'libx264',  # Explicitly use libx264
+        '-preset', 'medium',
+        '-crf', '23',
+        '-c:a', 'aac',
         '-strict', 'experimental',
-        output_path          # Output video file
+        '-movflags', '+faststart',  # Optimize for web playback
+        output_path
     ]
 
-    # Run the command with subprocess
-    subprocess.run(command, check=True)
+    try:
+        result = subprocess.run(command, check=True, capture_output=True, text=True)
+        print("FFmpeg output:")
+        print(result.stdout)
+    except subprocess.CalledProcessError as e:
+        print("FFmpeg error output:")
+        print(e.stderr)
+        raise
 
-    # Delete the temporary files if the merge was successful
-    os.remove(video_path)
-    os.remove(audio_path)
+    # Verify the output file
+    if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+        print(f"Output file created successfully. Size: {os.path.getsize(output_path)} bytes")
+    else:
+        raise Exception("Failed to create output video file with audio")
 
     return output_path
 
