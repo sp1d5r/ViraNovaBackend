@@ -3,268 +3,257 @@ import os
 import tempfile
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
+import subprocess
 
 
 class AddTextToVideoService:
-    def resize_video(self, input_path, output_path, target_width, target_height):
+    def __init__(self):
+        self.font_base_path = 'serverless_backend/assets/fonts'
+
+    def _get_video_info(self, input_path):
         cap = cv2.VideoCapture(input_path)
         if not cap.isOpened():
-            print("Error: Could not open video.")
-            return None
-
-        fourcc = cv2.VideoWriter_fourcc(*'avc1')
+            raise ValueError("Error: Could not open video.")
         fps = cap.get(cv2.CAP_PROP_FPS)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        cap.release()
+        return fps, width, height, total_frames
 
-        # Calculate the aspect ratio and determine the new dimensions
-        aspect_ratio = width / height
-        if width > height:
-            new_width = target_width
-            new_height = int(target_width / aspect_ratio)
-        else:
-            new_height = target_height
-            new_width = int(target_height * aspect_ratio)
+    def _get_font(self, text, max_width, max_height, thickness, font_scale):
+        font_path = os.path.abspath(os.path.join(self.font_base_path, f'Montserrat-{thickness}.ttf'))
+        if not os.path.exists(font_path):
+            raise FileNotFoundError(f"Error: Font file not found at {font_path}")
 
-        out = cv2.VideoWriter(output_path, fourcc, fps, (new_width, new_height))
+        font_size = int(font_scale * 20)
+        font = ImageFont.truetype(font_path, font_size)
 
         while True:
-            ret, frame = cap.read()
-            if not ret:
+            bbox = ImageDraw.Draw(Image.new('RGB', (1, 1))).textbbox((0, 0), text, font=font)
+            if bbox[2] - bbox[0] <= max_width and bbox[3] - bbox[1] <= max_height:
                 break
-            resized_frame = cv2.resize(frame, (new_width, new_height))
-            out.write(resized_frame)
-
-        cap.release()
-        out.release()
-
-    def add_text_centered(self, input_path, text, font_scale, position=None, color=(255, 255, 255), thickness='Bold', shadow_offset=(2,2), shadow_color=(0,0,0), outline=False, outline_color=(0, 0, 0), outline_thickness=2, offset=None, start_seconds=None, end_seconds=None):
-        return self.add_text(input_path, text, font_scale, position, color, thickness, start_seconds, end_seconds, shadow_offset, shadow_color, outline, outline_color, outline_thickness, offset)
-
-    def add_text(self, input_path, text, font_scale, position, color, thickness, start_seconds=None, end_seconds=None, shadow_offset=(2,2), shadow_color=(0,0,0), outline=False, outline_color=(0,0,0), outline_thickness=2, offset=None):
-        cap = cv2.VideoCapture(input_path)
-        if not cap.isOpened():
-            print("Error: Could not open video.")
-            return None
-
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        fourcc = cv2.VideoWriter_fourcc(*'avc1')
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-        # Temporary resized video path
-        _, resized_video_path = tempfile.mkstemp(suffix='.mp4')
-        self.resize_video(input_path, resized_video_path, 720, 1280)  # Resize to 720x1280
-
-        # Open the resized video
-        cap = cv2.VideoCapture(resized_video_path)
-        if not cap.isOpened():
-            print("Error: Could not open resized video.")
-            return None
-
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        _, temp_output_path = tempfile.mkstemp(suffix='.mp4')  # Create a temporary file
-        out = cv2.VideoWriter(temp_output_path, fourcc, fps, (width, height))
-        current_frame = 0
-
-        # Load the custom font
-        font_relative_path = f'serverless_backend/assets/fonts/Montserrat-{thickness}.ttf'
-        font_absolute_path = os.path.abspath(font_relative_path)
-
-        if not os.path.exists(font_absolute_path):
-            print(f"Error: Font file not found at {font_absolute_path}")
-            return None
-
-        def calculate_font_size(text, width, height, font_path):
-            font_size = int(font_scale * 20)
+            font_size -= 1
+            if font_size <= 0:
+                raise ValueError("Error: Text is too large to fit in the video")
             font = ImageFont.truetype(font_path, font_size)
-            text_bbox = ImageDraw.Draw(Image.new('RGB', (width, height))).textbbox((0, 0), text, font=font)
-            text_width = text_bbox[2] - text_bbox[0]
-            text_height = text_bbox[3] - text_bbox[1]
 
-            while text_width > width or text_height > height:
-                font_size -= 1
-                font = ImageFont.truetype(font_path, font_size)
-                text_bbox = ImageDraw.Draw(Image.new('RGB', (width, height))).textbbox((0, 0), text, font=font)
-                text_width = text_bbox[2] - text_bbox[0]
-                text_height = text_bbox[3] - text_bbox[1]
+        return font
 
-            return font
+    def _process_frame(self, frame, text, font, position, color, shadow_offset, shadow_color, outline, outline_color,
+                       outline_thickness):
+        pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        draw = ImageDraw.Draw(pil_image)
 
-        font = calculate_font_size(text, width, height, font_absolute_path)
+        # Draw shadow
+        draw.text((position[0] + shadow_offset[0], position[1] + shadow_offset[1]), text, font=font, fill=shadow_color)
 
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
+        # Draw outline
+        if outline:
+            for x in range(-outline_thickness, outline_thickness + 1):
+                for y in range(-outline_thickness, outline_thickness + 1):
+                    if x != 0 or y != 0:
+                        draw.text((position[0] + x, position[1] + y), text, font=font, fill=outline_color)
 
-            # Convert frame to PIL image
-            pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-            draw = ImageDraw.Draw(pil_image)
+        # Draw main text
+        draw.text(position, text, font=font, fill=color)
 
-            text_bbox = draw.textbbox((0, 0), text, font=font)
-            text_width = text_bbox[2] - text_bbox[0]
-            text_height = text_bbox[3] - text_bbox[1]
+        return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
 
-            if offset is not None:
-                # Calculate the position based on the offset
-                position = (
-                    (width // 2) + int(width * offset[0]) - (text_width // 2),
-                    (height // 2) + int(height * offset[1]) - (text_height // 2)
-                )
+    def add_text_centered(self, input_path, text, font_scale, position=None, color=(255, 255, 255), thickness='Bold',
+                          shadow_offset=(2, 2), shadow_color=(0, 0, 0), outline=False, outline_color=(0, 0, 0),
+                          outline_thickness=2, offset=None, start_seconds=None, end_seconds=None):
+        fps, width, height, total_frames = self._get_video_info(input_path)
 
-            if position is None:
-                position = (50, 50)  # Default position if none is provided
+        font = self._get_font(text, width, height, thickness, font_scale)
 
-            if start_seconds is not None and end_seconds is not None:
-                # Only add text between specified seconds
-                if start_seconds * fps <= current_frame <= end_seconds * fps:
-                    # Draw shadow
-                    draw.text((position[0] + shadow_offset[0], position[1] + shadow_offset[1]), text, font=font, fill=shadow_color)
+        bbox = ImageDraw.Draw(Image.new('RGB', (1, 1))).textbbox((0, 0), text, font=font)
+        text_width, text_height = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
-                    # Draw outline (stroke)
-                    if outline:
-                        for x in range(-outline_thickness, outline_thickness + 1):
-                            for y in range(-outline_thickness, outline_thickness + 1):
-                                if x != 0 or y != 0:
-                                    draw.text((position[0] + x, position[1] + y), text, font=font, fill=outline_color)
+        if position is None:
+            position = ((width - text_width) // 2, (height - text_height) // 2)
 
-                    # Draw main text
-                    draw.text(position, text, font=font, fill=color)
-            else:
-                # Add text to all frames
-                # Draw shadow
-                draw.text((position[0] + shadow_offset[0], position[1] + shadow_offset[1]), text, font=font, fill=shadow_color)
+        if offset is not None:
+            position = (
+                position[0] + int(width * offset[0]),
+                position[1] + int(height * offset[1])
+            )
 
-                # Draw outline (stroke)
-                if outline:
-                    for x in range(-outline_thickness, outline_thickness + 1):
-                        for y in range(-outline_thickness, outline_thickness + 1):
-                            if x != 0 or y != 0:
-                                draw.text((position[0] + x, position[1] + y), text, font=font, fill=outline_color)
+        with tempfile.NamedTemporaryFile(suffix='.yuv', delete=False) as raw_file:
+            raw_path = raw_file.name
 
-                # Draw main text
-                draw.text(position, text, font=font, fill=color)
+        cap = cv2.VideoCapture(input_path)
+        frame_count = 0
 
-            # Convert PIL image back to OpenCV format
-            frame = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
-            out.write(frame)
-            current_frame += 1
+        with open(raw_path, 'wb') as raw_out:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
 
-        # Release everything when done
+                if start_seconds is None or end_seconds is None or (
+                        start_seconds * fps <= frame_count <= end_seconds * fps):
+                    frame = self._process_frame(frame, text, font, position, color, shadow_offset, shadow_color,
+                                                outline, outline_color, outline_thickness)
+
+                yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420)
+                raw_out.write(yuv.tobytes())
+                frame_count += 1
+
         cap.release()
-        out.release()
 
-        os.remove(resized_video_path)  # Remove the temporary resized video
-        os.remove(input_path)  # Remove the original input video
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as output_file:
+            output_path = output_file.name
+
+        ffmpeg_command = [
+            'ffmpeg',
+            '-f', 'rawvideo',
+            '-vcodec', 'rawvideo',
+            '-s', f'{width}x{height}',
+            '-pix_fmt', 'yuv420p',
+            '-r', str(fps),
+            '-i', raw_path,
+            '-c:v', 'libx264',
+            '-preset', 'ultrafast',
+            '-crf', '23',
+            '-y',
+            output_path
+        ]
+
+        subprocess.run(ffmpeg_command, check=True)
+
+        os.remove(raw_path)
+        os.remove(input_path)
+        print("Centered text added to video, original file updated!")
+        return output_path
+
+    def add_text(self, input_path, text, font_scale, position, color, thickness, start_seconds=None, end_seconds=None,
+                 shadow_offset=(2, 2), shadow_color=(0, 0, 0), outline=False, outline_color=(0, 0, 0),
+                 outline_thickness=2, offset=None):
+        fps, width, height, total_frames = self._get_video_info(input_path)
+
+        font = self._get_font(text, width, height, thickness, font_scale)
+
+        if offset is not None:
+            bbox = ImageDraw.Draw(Image.new('RGB', (1, 1))).textbbox((0, 0), text, font=font)
+            text_width, text_height = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            position = (
+                (width // 2) + int(width * offset[0]) - (text_width // 2),
+                (height // 2) + int(height * offset[1]) - (text_height // 2)
+            )
+
+        if position is None:
+            position = (50, 50)
+
+        with tempfile.NamedTemporaryFile(suffix='.yuv', delete=False) as raw_file:
+            raw_path = raw_file.name
+
+        cap = cv2.VideoCapture(input_path)
+        frame_count = 0
+
+        with open(raw_path, 'wb') as raw_out:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                if start_seconds is None or end_seconds is None or (
+                        start_seconds * fps <= frame_count <= end_seconds * fps):
+                    frame = self._process_frame(frame, text, font, position, color, shadow_offset, shadow_color,
+                                                outline, outline_color, outline_thickness)
+
+                yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420)
+                raw_out.write(yuv.tobytes())
+                frame_count += 1
+
+        cap.release()
+
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as output_file:
+            output_path = output_file.name
+
+        ffmpeg_command = [
+            'ffmpeg',
+            '-f', 'rawvideo',
+            '-vcodec', 'rawvideo',
+            '-s', f'{width}x{height}',
+            '-pix_fmt', 'yuv420p',
+            '-r', str(fps),
+            '-i', raw_path,
+            '-c:v', 'libx264',
+            '-preset', 'ultrafast',
+            '-crf', '23',
+            '-y',
+            output_path
+        ]
+
+        subprocess.run(ffmpeg_command, check=True)
+
+        os.remove(raw_path)
+        os.remove(input_path)
         print("Text added to video, original file updated!")
-        return temp_output_path  # Return the path of the updated file
+        return output_path
 
     def add_transcript(self, input_path, texts, start_times, end_times, font_scale=1, color=(255, 255, 255),
                        thickness='Bold', shadow_offset=(2, 2), shadow_color=(0, 0, 0), outline=False,
                        outline_color=(0, 0, 0), outline_thickness=2, offset=(0, 0)):
+        fps, width, height, total_frames = self._get_video_info(input_path)
+
+        fonts = [self._get_font(text, width, height, thickness, font_scale) for text in texts]
+
+        positions = []
+        for text, font in zip(texts, fonts):
+            bbox = ImageDraw.Draw(Image.new('RGB', (1, 1))).textbbox((0, 0), text, font=font)
+            text_width, text_height = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            position = (
+                (width // 2) + int(width * offset[0]) - (text_width // 2),
+                (height // 2) + int(height * offset[1]) - (text_height // 2)
+            )
+            positions.append(position)
+
+        with tempfile.NamedTemporaryFile(suffix='.yuv', delete=False) as raw_file:
+            raw_path = raw_file.name
+
         cap = cv2.VideoCapture(input_path)
-        if not cap.isOpened():
-            print("Error: Could not open video.")
-            return None
+        frame_count = 0
 
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        fourcc = cv2.VideoWriter_fourcc(*'avc1')
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        with open(raw_path, 'wb') as raw_out:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
 
-        # Temporary resized video path
-        _, resized_video_path = tempfile.mkstemp(suffix='.mp4')
-        self.resize_video(input_path, resized_video_path, 720, 1280)  # Resize to 1280x720
+                for text, font, position, start_time, end_time in zip(texts, fonts, positions, start_times, end_times):
+                    if start_time * fps <= frame_count <= end_time * fps:
+                        frame = self._process_frame(frame, text, font, position, color, shadow_offset, shadow_color,
+                                                    outline, outline_color, outline_thickness)
 
-        # Open the resized video
-        cap = cv2.VideoCapture(resized_video_path)
-        if not cap.isOpened():
-            print("Error: Could not open resized video.")
-            return None
+                yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420)
+                raw_out.write(yuv.tobytes())
+                frame_count += 1
 
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        _, temp_output_path = tempfile.mkstemp(suffix='.mp4')  # Create a temporary file
-        out = cv2.VideoWriter(temp_output_path, fourcc, fps, (width, height))
-        current_frame = 0
-
-        # Load the custom font
-        font_relative_path = f'serverless_backend/assets/fonts/Montserrat-{thickness}.ttf'
-        font_absolute_path = os.path.abspath(font_relative_path)
-
-        if not os.path.exists(font_absolute_path):
-            print(f"Error: Font file not found at {font_absolute_path}")
-            return None
-
-        def calculate_font_size(text, width, height, font_path):
-            font_size = int(font_scale * 20)
-            font = ImageFont.truetype(font_path, font_size)
-            text_bbox = ImageDraw.Draw(Image.new('RGB', (width, height))).textbbox((0, 0), text, font=font)
-            text_width = text_bbox[2] - text_bbox[0]
-            text_height = text_bbox[3] - text_bbox[1]
-
-            while text_width > width or text_height > height:
-                font_size -= 1
-                font = ImageFont.truetype(font_path, font_size)
-                text_bbox = ImageDraw.Draw(Image.new('RGB', (width, height))).textbbox((0, 0), text, font=font)
-                text_width = text_bbox[2] - text_bbox[0]
-                text_height = text_bbox[3] - text_bbox[1]
-
-            return font
-
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            # Convert frame to PIL image
-            pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-            draw = ImageDraw.Draw(pil_image)
-
-            for text, start_time, end_time in zip(texts, start_times, end_times):
-                font = calculate_font_size(text, width, height, font_absolute_path)
-                text_bbox = draw.textbbox((0, 0), text, font=font)
-                text_width = text_bbox[2] - text_bbox[0]
-                text_height = text_bbox[3] - text_bbox[1]
-
-                if offset is not None:
-                    # Calculate the position based on the offset
-                    position = (
-                        (width // 2) + int(width * offset[0]) - (text_width // 2),
-                        (height // 2) + int(height * offset[1]) - (text_height // 2)
-                    )
-
-                if position is None:
-                    position = (50, 50)  # Default position if none is provided
-
-                # Only add text between specified seconds
-                if start_time * fps <= current_frame <= end_time * fps:
-                    # Draw shadow
-                    draw.text((position[0] + shadow_offset[0], position[1] + shadow_offset[1]), text, font=font,
-                              fill=shadow_color)
-
-                    # Draw outline (stroke)
-                    if outline:
-                        for x in range(-outline_thickness, outline_thickness + 1):
-                            for y in range(-outline_thickness, outline_thickness + 1):
-                                if x != 0 or y != 0:
-                                    draw.text((position[0] + x, position[1] + y), text, font=font, fill=outline_color)
-
-                    # Draw main text
-                    draw.text(position, text, font=font, fill=color)
-
-            # Convert PIL image back to OpenCV format
-            frame = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
-            out.write(frame)
-            current_frame += 1
-
-        # Release everything when done
         cap.release()
-        out.release()
 
-        os.remove(resized_video_path)  # Remove the temporary resized video
-        os.remove(input_path)  # Remove the original input video
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as output_file:
+            output_path = output_file.name
+
+        ffmpeg_command = [
+            'ffmpeg',
+            '-f', 'rawvideo',
+            '-vcodec', 'rawvideo',
+            '-s', f'{width}x{height}',
+            '-pix_fmt', 'yuv420p',
+            '-r', str(fps),
+            '-i', raw_path,
+            '-c:v', 'libx264',
+            '-preset', 'ultrafast',
+            '-crf', '23',
+            '-y',
+            output_path
+        ]
+
+        subprocess.run(ffmpeg_command, check=True)
+
+        os.remove(raw_path)
+        os.remove(input_path)
         print("Transcript added to video, original file updated!")
-        return temp_output_path  # Return the path of the updated file
+        return output_path

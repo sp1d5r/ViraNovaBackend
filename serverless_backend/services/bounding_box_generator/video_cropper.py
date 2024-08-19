@@ -3,6 +3,7 @@ import numpy as np
 from typing import List, Tuple, Dict
 import tempfile
 import os
+import subprocess
 
 class VideoCropper:
     def __init__(self, input_video_path: str, bounding_boxes: Dict[str, List[Tuple[int, int, int, int]]],

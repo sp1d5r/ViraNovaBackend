@@ -15,7 +15,7 @@ generate_test_audio = Blueprint("generate_test_audio", __name__)
 
 
 @generate_test_audio.route("/v1/generate-test-audio/<request_id>", methods=['GET'])
-def generate_test_audio_for_short(request_id):
+def generate_test_audio_for_short(request_id, function_called=False):
     firebase_service = FirebaseService()
     try:
         request_doc = firebase_service.get_document("requests", request_id)
@@ -187,7 +187,7 @@ def generate_test_audio_for_short(request_id):
 
         update_message("Test audio generation completed successfully")
 
-        if auto_generate:
+        if auto_generate and not function_called:
             firebase_service.create_short_request(
                 "v1/create-short-video",
                 short_id,

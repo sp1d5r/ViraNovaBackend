@@ -543,7 +543,7 @@ def create_cropped_video(request_id):
             update_progress(95)
 
         update_message("Creating Updated short audio file")
-        generate_test_audio_for_short(request_id)  # Assuming this function has been updated to use request_id
+        generate_test_audio_for_short(request_id, function_called=True)  # Assuming this function has been updated to use request_id
         update_message("Adding audio now")
         short_doc = firebase_service.get_document("shorts", short_id)
 
