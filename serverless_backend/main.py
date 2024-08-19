@@ -1,5 +1,4 @@
-from firebase_admin import firestore
-
+from datetime import datetime
 from serverless_backend.routes.generate_short_ideas import generate_short_ideas
 from serverless_backend.routes.deprecated.get_random_video import get_random_video
 from serverless_backend.routes.deprecated.get_segmentation_masks import get_segmentation_mask
@@ -21,6 +20,7 @@ from serverless_backend.routes.generate_a_roll import generate_a_roll
 from serverless_backend.routes.generate_b_roll import generate_b_roll
 from serverless_backend.routes.youtube_link import youtube_link
 from serverless_backend.routes.transcribe_video import transcribe
+from google.cloud import firestore as fs
 from flask_cors import CORS
 from flask import Flask, request, jsonify, g
 import os
@@ -162,20 +162,15 @@ def check_status():
         if not request_doc:
             return jsonify({'message': 'Request not found'}), 404
 
-        if 'serverStartedTimestamp' in request_doc:
-            firebase_service.update_document('requests', request_id, {
-                'logs': [{
-                    'message': 'Request is already being processed',
-                    'timestamp': firestore.firestore.SERVER_TIMESTAMP
-                }]
-            })
-            return jsonify({'message': 'Request is already being processed'}), 400
+        # if 'serverStartedTimestamp' in request_doc:
+        #     firebase_service.update_message(request_id, 'Request is already being processed')
+        #     return jsonify({'message': 'Request is already being processed'}), 400
 
         firebase_service.update_document('requests', request_id, {
-            'serverStartedTimestamp': firestore.firestore.SERVER_TIMESTAMP
+            'serverStartedTimestamp': fs.SERVER_TIMESTAMP
         })
 
-        short_id = request_doc['short_id']
+        short_id = request_doc['shortId']
 
         short_document = firebase_service.get_document("shorts", short_id)
         status = short_document.get(SERVER_STATUS_COLUMN_NAME, SERVER_STATUS_PENDING)
@@ -184,7 +179,7 @@ def check_status():
             firebase_service.update_document('requests', request_id, {
                 'logs': [{
                     'message': f'Task already {status.lower()}. Please wait or check the result.',
-                    'timestamp': firestore.firestore.SERVER_TIMESTAMP
+                    'timestamp': datetime.now()
                 }]
             })
             return jsonify({'message': f'Task already {status.lower()}. Please wait or check the result.'}), 400
@@ -227,14 +222,14 @@ def update_status(response):
         firebase_service.update_document("shorts", short_id,
                                          {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE, "pending_operation": False})
     if request_id:
-        firebase_service.update_document('requests', g.request_id, {
-            'serverCompletedTimestamp': firestore.firestore.SERVER_TIMESTAMP
+        firebase_service.update_document('requests', request_id, {
+            'serverCompletedTimestamp': fs.SERVER_TIMESTAMP
         })
 
         request_doc = firebase_service.get_document("requests", request_id)
-        short_id = request_doc['short_id']
-
-        firebase_service.update_document("shorts", short_id,
+        short_id = request_doc.get('short_id', '')
+        if short_id != '':
+            firebase_service.update_document("shorts", short_id,
                                          {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE,
                                           "pending_operation": False})
 

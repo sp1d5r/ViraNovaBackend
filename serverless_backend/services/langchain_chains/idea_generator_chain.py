@@ -3,7 +3,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_openai import ChatOpenAI
 
-model = ChatOpenAI(model_name='gpt-3.5-turbo-16k')
+model = ChatOpenAI(model_name='gpt-4o')
 
 class TikTokIdea(BaseModel):
     tiktok_idea: str = Field(description="Idea for a tiktok, using the transcript.")

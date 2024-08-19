@@ -4,6 +4,7 @@ from firebase_admin import firestore
 from flask import Blueprint, jsonify
 from serverless_backend.services.firebase import FirebaseService
 from serverless_backend.services.langchain_chains.crop_segment import requires_cropping_chain, delete_operation_chain
+from serverless_backend.services.langchain_chains.title_generator_chain import title_generator_chain
 from serverless_backend.services.verify_video_document import parse_and_verify_short
 from datetime import datetime
 
@@ -182,10 +183,27 @@ def perform_temporal_segmentation(request_id):
                 })
                 error_count += 1
 
+        final_transcript = " ".join([word for index, word in words_with_index if index >= 0])
+        title_result = title_generator_chain.invoke({
+            "tiktok_idea": short_idea,
+            "segment_transcript": final_transcript
+        })
+
+        # Update short_document with new title
+        firebase_service.update_document("shorts", short_id, {
+            "short_title_top": title_result.short_title_top,
+            "short_title_bottom": title_result.short_title_bottom,
+            "pending_operation": False
+        })
+
+        update_logs({
+            "time": datetime.now(),
+            "message": f"Generated title: {title_result.short_title_top} | {title_result.short_title_bottom}",
+            "type": "success"
+        })
+
         update_progress(100)
 
-
-        firebase_service.update_document("shorts", short_id, {"pending_operation": False})
         if auto_generate:
             firebase_service.create_short_request(
                 "v1/generate-test-audio",

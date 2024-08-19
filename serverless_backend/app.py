@@ -164,12 +164,7 @@ def check_status():
             return jsonify({'message': 'Request not found'}), 404
 
         if 'serverStartedTimestamp' in request_doc:
-            firebase_service.update_document('requests', request_id, {
-                'logs': [{
-                    'message': 'Request is already being processed',
-                    'timestamp': firestore.firestore.SERVER_TIMESTAMP
-                }]
-            })
+            firebase_service.update_message(request_id, 'Request is already being processed')
             return jsonify({'message': 'Request is already being processed'}), 400
 
         firebase_service.update_document('requests', request_id, {
@@ -183,12 +178,7 @@ def check_status():
         status = short_document.get(SERVER_STATUS_COLUMN_NAME, SERVER_STATUS_PENDING)
         print("Status:", status)
         if status == SERVER_STATUS_PROCESSING:
-            firebase_service.update_document('requests', request_id, {
-                'logs': [{
-                    'message': f'Task already {status.lower()}. Please wait or check the result.',
-                    'timestamp': firestore.firestore.SERVER_TIMESTAMP
-                }]
-            })
+            firebase_service.update_message(request_id,  f'Task already {status.lower()}. Please wait or check the result.')
             return jsonify({'message': f'Task already {status.lower()}. Please wait or check the result.'}), 400
         else:
             # Set the status to 'Processing' and save it in the request context

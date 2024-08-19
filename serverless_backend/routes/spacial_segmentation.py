@@ -429,10 +429,28 @@ def create_cropped_video(request_id):
         output_path = firebase_service.download_file_to_temp(clipped_footage)
         update_progress(30)
 
-        # Get video properties
+        # Default branding settings
         COLOUR = (13, 255, 0)
         SHADOW_COLOUR = (192, 255, 189)
         LOGO = "ViraNova"
+
+        # Get user document and update branding if available
+        user_id = request_doc.get('uid')
+        if user_id:
+            user_doc = firebase_service.get_document("users", user_id)
+            if user_doc:
+                # Update logo if channel is linked
+                if 'channelName' in user_doc.keys():
+                    LOGO = user_doc['channelName']
+
+                # Update colors if specified
+                if 'primaryColor' in user_doc.keys():
+                    # Convert hex color to RGB
+                    COLOUR = tuple(int(user_doc['primaryColor'].lstrip('#')[i:i + 2], 16) for i in (0, 2, 4))
+
+                if 'secondaryColor' in user_doc.keys():
+                    # Convert hex color to RGB
+                    SHADOW_COLOUR = tuple(int(user_doc['secondaryColor'].lstrip('#')[i:i + 2], 16) for i in (0, 2, 4))
 
         if 'short_title_top' in short_doc:
             update_message("Added top text")
@@ -452,7 +470,7 @@ def create_cropped_video(request_id):
                                                          shadow_offset=(1, 1), outline=False, outline_color=(0, 0, 0),
                                                          outline_thickness=1, offset=(0, 0.18))
 
-        output_path = text_service.add_text_centered(output_path, LOGO, 1,
+        output_path = text_service.add_text_centered(output_path, LOGO, 1.3,
                                                      thickness='Bold',
                                                      color=COLOUR, shadow_color=(0, 0, 0),
                                                      shadow_offset=(1, 1), outline=False, outline_color=(0, 0, 0),
