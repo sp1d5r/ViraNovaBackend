@@ -5,7 +5,6 @@ from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 import subprocess
 
-
 class AddTextToVideoService:
     def __init__(self):
         self.font_base_path = 'serverless_backend/assets/fonts'
@@ -60,200 +59,122 @@ class AddTextToVideoService:
 
         return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
 
-    def add_text_centered(self, input_path, text, font_scale, position=None, color=(255, 255, 255), thickness='Bold',
-                          shadow_offset=(2, 2), shadow_color=(0, 0, 0), outline=False, outline_color=(0, 0, 0),
-                          outline_thickness=2, offset=None, start_seconds=None, end_seconds=None):
+    def process_video_with_text(self, input_path, text_additions):
         fps, width, height, total_frames = self._get_video_info(input_path)
 
-        font = self._get_font(text, width, height, thickness, font_scale)
+        # Prepare fonts and positions for all text additions
+        prepared_additions = []
+        for addition in text_additions:
+            if addition.get('type') == 'transcript':
+                prepared_additions.extend(self._prepare_transcript(addition, width, height, fps))
+            else:
+                prepared_additions.append(self._prepare_text_addition(addition, width, height))
 
-        bbox = ImageDraw.Draw(Image.new('RGB', (1, 1))).textbbox((0, 0), text, font=font)
+        with tempfile.NamedTemporaryFile(suffix='.yuv', delete=False) as raw_file:
+            raw_path = raw_file.name
+
+        cap = cv2.VideoCapture(input_path)
+        frame_count = 0
+
+        with open(raw_path, 'wb') as raw_out:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                for addition in prepared_additions:
+                    if addition['start_frame'] <= frame_count <= addition['end_frame']:
+                        frame = self._process_frame(frame, addition['text'], addition['font'], addition['position'],
+                                                    addition['color'], addition['shadow_offset'],
+                                                    addition['shadow_color'], addition['outline'],
+                                                    addition['outline_color'], addition['outline_thickness'])
+
+                yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420)
+                raw_out.write(yuv.tobytes())
+                frame_count += 1
+
+        cap.release()
+
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as output_file:
+            output_path = output_file.name
+
+        ffmpeg_command = [
+            'ffmpeg',
+            '-f', 'rawvideo',
+            '-vcodec', 'rawvideo',
+            '-s', f'{width}x{height}',
+            '-pix_fmt', 'yuv420p',
+            '-r', str(fps),
+            '-i', raw_path,
+            '-c:v', 'libx264',
+            '-preset', 'ultrafast',
+            '-crf', '23',
+            '-y',
+            output_path
+        ]
+
+        subprocess.run(ffmpeg_command, check=True)
+
+        os.remove(raw_path)
+        os.remove(input_path)
+        print("All text additions applied to video, original file updated!")
+        return output_path
+
+    def _prepare_text_addition(self, addition, width, height):
+        font = self._get_font(addition['text'], width, height, addition['thickness'], addition['font_scale'])
+        bbox = ImageDraw.Draw(Image.new('RGB', (1, 1))).textbbox((0, 0), addition['text'], font=font)
         text_width, text_height = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
-        if position is None:
+        if 'position' in addition:
+            position = addition['position']
+        else:
             position = ((width - text_width) // 2, (height - text_height) // 2)
 
-        if offset is not None:
+        if 'offset' in addition:
             position = (
-                position[0] + int(width * offset[0]),
-                position[1] + int(height * offset[1])
+                position[0] + int(width * addition['offset'][0]),
+                position[1] + int(height * addition['offset'][1])
             )
 
-        with tempfile.NamedTemporaryFile(suffix='.yuv', delete=False) as raw_file:
-            raw_path = raw_file.name
+        return {
+            'text': addition['text'],
+            'font': font,
+            'position': position,
+            'color': addition['color'],
+            'shadow_offset': addition.get('shadow_offset', (2, 2)),
+            'shadow_color': addition.get('shadow_color', (0, 0, 0)),
+            'outline': addition.get('outline', False),
+            'outline_color': addition.get('outline_color', (0, 0, 0)),
+            'outline_thickness': addition.get('outline_thickness', 2),
+            'start_frame': 0,
+            'end_frame': float('inf')
+        }
 
-        cap = cv2.VideoCapture(input_path)
-        frame_count = 0
+    def _prepare_transcript(self, transcript, width, height, fps):
+        prepared_lines = []
 
-        with open(raw_path, 'wb') as raw_out:
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-
-                if start_seconds is None or end_seconds is None or (
-                        start_seconds * fps <= frame_count <= end_seconds * fps):
-                    frame = self._process_frame(frame, text, font, position, color, shadow_offset, shadow_color,
-                                                outline, outline_color, outline_thickness)
-
-                yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420)
-                raw_out.write(yuv.tobytes())
-                frame_count += 1
-
-        cap.release()
-
-        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as output_file:
-            output_path = output_file.name
-
-        ffmpeg_command = [
-            'ffmpeg',
-            '-f', 'rawvideo',
-            '-vcodec', 'rawvideo',
-            '-s', f'{width}x{height}',
-            '-pix_fmt', 'yuv420p',
-            '-r', str(fps),
-            '-i', raw_path,
-            '-c:v', 'libx264',
-            '-preset', 'ultrafast',
-            '-crf', '23',
-            '-y',
-            output_path
-        ]
-
-        subprocess.run(ffmpeg_command, check=True)
-
-        os.remove(raw_path)
-        os.remove(input_path)
-        print("Centered text added to video, original file updated!")
-        return output_path
-
-    def add_text(self, input_path, text, font_scale, position, color, thickness, start_seconds=None, end_seconds=None,
-                 shadow_offset=(2, 2), shadow_color=(0, 0, 0), outline=False, outline_color=(0, 0, 0),
-                 outline_thickness=2, offset=None):
-        fps, width, height, total_frames = self._get_video_info(input_path)
-
-        font = self._get_font(text, width, height, thickness, font_scale)
-
-        if offset is not None:
+        for text, start_time, end_time in zip(transcript['texts'], transcript['start_times'], transcript['end_times']):
+            font = self._get_font(text, width, height, transcript['thickness'], transcript['font_scale'])
             bbox = ImageDraw.Draw(Image.new('RGB', (1, 1))).textbbox((0, 0), text, font=font)
             text_width, text_height = bbox[2] - bbox[0], bbox[3] - bbox[1]
+
             position = (
-                (width // 2) + int(width * offset[0]) - (text_width // 2),
-                (height // 2) + int(height * offset[1]) - (text_height // 2)
+                (width // 2) + int(width * transcript['offset'][0]) - (text_width // 2),
+                (height // 2) + int(height * transcript['offset'][1]) - (text_height // 2)
             )
 
-        if position is None:
-            position = (50, 50)
+            prepared_lines.append({
+                'text': text,
+                'font': font,
+                'position': position,
+                'color': transcript['color'],
+                'shadow_offset': transcript.get('shadow_offset', (2, 2)),
+                'shadow_color': transcript.get('shadow_color', (0, 0, 0)),
+                'outline': transcript.get('outline', False),
+                'outline_color': transcript.get('outline_color', (0, 0, 0)),
+                'outline_thickness': transcript.get('outline_thickness', 2),
+                'start_frame': int(start_time * fps),
+                'end_frame': int(end_time * fps)
+            })
 
-        with tempfile.NamedTemporaryFile(suffix='.yuv', delete=False) as raw_file:
-            raw_path = raw_file.name
-
-        cap = cv2.VideoCapture(input_path)
-        frame_count = 0
-
-        with open(raw_path, 'wb') as raw_out:
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-
-                if start_seconds is None or end_seconds is None or (
-                        start_seconds * fps <= frame_count <= end_seconds * fps):
-                    frame = self._process_frame(frame, text, font, position, color, shadow_offset, shadow_color,
-                                                outline, outline_color, outline_thickness)
-
-                yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420)
-                raw_out.write(yuv.tobytes())
-                frame_count += 1
-
-        cap.release()
-
-        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as output_file:
-            output_path = output_file.name
-
-        ffmpeg_command = [
-            'ffmpeg',
-            '-f', 'rawvideo',
-            '-vcodec', 'rawvideo',
-            '-s', f'{width}x{height}',
-            '-pix_fmt', 'yuv420p',
-            '-r', str(fps),
-            '-i', raw_path,
-            '-c:v', 'libx264',
-            '-preset', 'ultrafast',
-            '-crf', '23',
-            '-y',
-            output_path
-        ]
-
-        subprocess.run(ffmpeg_command, check=True)
-
-        os.remove(raw_path)
-        os.remove(input_path)
-        print("Text added to video, original file updated!")
-        return output_path
-
-    def add_transcript(self, input_path, texts, start_times, end_times, font_scale=1, color=(255, 255, 255),
-                       thickness='Bold', shadow_offset=(2, 2), shadow_color=(0, 0, 0), outline=False,
-                       outline_color=(0, 0, 0), outline_thickness=2, offset=(0, 0)):
-        fps, width, height, total_frames = self._get_video_info(input_path)
-
-        fonts = [self._get_font(text, width, height, thickness, font_scale) for text in texts]
-
-        positions = []
-        for text, font in zip(texts, fonts):
-            bbox = ImageDraw.Draw(Image.new('RGB', (1, 1))).textbbox((0, 0), text, font=font)
-            text_width, text_height = bbox[2] - bbox[0], bbox[3] - bbox[1]
-            position = (
-                (width // 2) + int(width * offset[0]) - (text_width // 2),
-                (height // 2) + int(height * offset[1]) - (text_height // 2)
-            )
-            positions.append(position)
-
-        with tempfile.NamedTemporaryFile(suffix='.yuv', delete=False) as raw_file:
-            raw_path = raw_file.name
-
-        cap = cv2.VideoCapture(input_path)
-        frame_count = 0
-
-        with open(raw_path, 'wb') as raw_out:
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-
-                for text, font, position, start_time, end_time in zip(texts, fonts, positions, start_times, end_times):
-                    if start_time * fps <= frame_count <= end_time * fps:
-                        frame = self._process_frame(frame, text, font, position, color, shadow_offset, shadow_color,
-                                                    outline, outline_color, outline_thickness)
-
-                yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420)
-                raw_out.write(yuv.tobytes())
-                frame_count += 1
-
-        cap.release()
-
-        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as output_file:
-            output_path = output_file.name
-
-        ffmpeg_command = [
-            'ffmpeg',
-            '-f', 'rawvideo',
-            '-vcodec', 'rawvideo',
-            '-s', f'{width}x{height}',
-            '-pix_fmt', 'yuv420p',
-            '-r', str(fps),
-            '-i', raw_path,
-            '-c:v', 'libx264',
-            '-preset', 'ultrafast',
-            '-crf', '23',
-            '-y',
-            output_path
-        ]
-
-        subprocess.run(ffmpeg_command, check=True)
-
-        os.remove(raw_path)
-        os.remove(input_path)
-        print("Transcript added to video, original file updated!")
-        return output_path
+        return prepared_lines

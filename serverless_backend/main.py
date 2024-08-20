@@ -223,14 +223,16 @@ def update_status(response):
                                          {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE, "pending_operation": False})
     if request_id:
         firebase_service.update_document('requests', request_id, {
-            'serverCompletedTimestamp': fs.SERVER_TIMESTAMP
+            'serverCompletedTimestamp': fs.SERVER_TIMESTAMP,
+            SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE,
         })
 
         request_doc = firebase_service.get_document("requests", request_id)
-        short_id = request_doc.get('short_id', '')
+        short_id = request_doc.get('shortId', '')
         if short_id != '':
             firebase_service.update_document("shorts", short_id,
-                                         {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE,
+                                         {
+                                             SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE,
                                           "pending_operation": False})
 
     return response

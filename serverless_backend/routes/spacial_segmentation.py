@@ -404,8 +404,6 @@ def create_cropped_video(request_id):
 
         update_temp_progress = lambda x, start, length: update_progress(start + (length * (x / 100)))
 
-        auto_generate = short_doc.get('auto_generate', False)
-
         update_message("Retrieved the document")
         firebase_service.update_document("shorts", short_id, {"pending_operation": True})
 
@@ -426,7 +424,7 @@ def create_cropped_video(request_id):
         update_message("Accessed the short document")
         clipped_footage = short_doc.get("short_b_roll", short_doc.get("short_a_roll", ""))
         update_message("Download the clipped video")
-        output_path = firebase_service.download_file_to_temp(clipped_footage)
+        input_path = firebase_service.download_file_to_temp(clipped_footage)
         update_progress(30)
 
         # Default branding settings
@@ -439,126 +437,107 @@ def create_cropped_video(request_id):
         if user_id:
             user_doc = firebase_service.get_document("users", user_id)
             if user_doc:
-                # Update logo if channel is linked
                 if 'channelName' in user_doc.keys():
                     LOGO = user_doc['channelName']
-
-                # Update colors if specified
                 if 'primaryColor' in user_doc.keys():
-                    # Convert hex color to RGB
-                    COLOUR = tuple(int(user_doc['primaryColor'].lstrip('#')[i:i + 2], 16) for i in (0, 2, 4))
-
+                    COLOUR = tuple(int(user_doc['primaryColor'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
                 if 'secondaryColor' in user_doc.keys():
-                    # Convert hex color to RGB
-                    SHADOW_COLOUR = tuple(int(user_doc['secondaryColor'].lstrip('#')[i:i + 2], 16) for i in (0, 2, 4))
+                    SHADOW_COLOUR = tuple(int(user_doc['secondaryColor'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
 
-        if 'short_title_top' in short_doc:
-            update_message("Added top text")
-            update_progress(65)
-            output_path = text_service.add_text_centered(output_path, short_doc['short_title_top'].upper(), 1.7,
-                                                         thickness='Bold', color=(255, 255, 255),
-                                                         shadow_color=(0, 0, 0),
-                                                         shadow_offset=(1, 1), outline=True, outline_color=(0, 0, 0),
-                                                         outline_thickness=1, offset=(0, 0.15))
+        # Prepare text additions
+        text_additions = []
+        if 'short_title_top' in short_doc.keys():
+            text_additions.append({
+                'text': short_doc['short_title_top'].upper(),
+                'font_scale': 1.7,
+                'thickness': 'Bold',
+                'color': (255, 255, 255),
+                'shadow_color': (0, 0, 0),
+                'shadow_offset': (1, 1),
+                'outline': True,
+                'outline_color': (0, 0, 0),
+                'outline_thickness': 1,
+                'offset': (0, 0.15)
+            })
 
         if 'short_title_bottom' in short_doc:
-            update_message("Added bottom text")
-            update_progress(70)
-            output_path = text_service.add_text_centered(output_path, short_doc['short_title_bottom'].upper(), 1.7,
-                                                         thickness='Bold',
-                                                         color=COLOUR, shadow_color=SHADOW_COLOUR,
-                                                         shadow_offset=(1, 1), outline=False, outline_color=(0, 0, 0),
-                                                         outline_thickness=1, offset=(0, 0.18))
+            text_additions.append({
+                'text': short_doc['short_title_bottom'].upper(),
+                'font_scale': 1.7,
+                'thickness': 'Bold',
+                'color': COLOUR,
+                'shadow_color': SHADOW_COLOUR,
+                'shadow_offset': (1, 1),
+                'outline': False,
+                'outline_color': (0, 0, 0),
+                'outline_thickness': 1,
+                'offset': (0, 0.17)
+            })
 
-        output_path = text_service.add_text_centered(output_path, LOGO, 1.3,
-                                                     thickness='Bold',
-                                                     color=COLOUR, shadow_color=(0, 0, 0),
-                                                     shadow_offset=(1, 1), outline=False, outline_color=(0, 0, 0),
-                                                     outline_thickness=1, offset=(0, 0.1))
+        text_additions.append({
+            'text': LOGO,
+            'font_scale': 1.5,
+            'thickness': 'Bold',
+            'color': COLOUR,
+            'shadow_color': (0, 0, 0),
+            'shadow_offset': (1, 1),
+            'outline': False,
+            'outline_color': (0, 0, 0),
+            'outline_thickness': 1,
+            'offset': (0, 0.1)
+        })
 
+        # Add transcript if needed
         add_transcript = True
         if add_transcript:
-            segment_document = firebase_service.get_document('topical_segments', short_doc['segment_id'])
-
-            try:
-                segment_document_words = parse_segment_words(segment_document)
-            except ValueError as e:
-                error_message = f"Error parsing segment words: {str(e)}"
+            short_doc = firebase_service.get_document("shorts", short_id)
+            if 'lines' not in short_doc:
+                error_message = "Error: Lines not found in short document"
                 update_message(error_message)
                 firebase_service.update_document("shorts", short_id, {"pending_operation": False})
                 return jsonify({
                     "status": "error",
                     "data": {"request_id": request_id, "short_id": short_id, "error": error_message},
-                    "message": "Failed to parse segment words"
+                    "message": "Failed to process transcript"
                 }), 400
 
-            update_message("Read Segment Words")
+            lines = short_doc['lines']
+            update_message("Processing transcript lines")
             update_progress(75)
-            logs = short_doc['logs']
-            words_to_handle = handle_operations_from_logs(logs, segment_document_words)
-            words_to_handle = [
-                {**word, 'end_time': min(word['end_time'], words_to_handle[i + 1]['start_time'])}
-                if i + 1 < len(words_to_handle) else word
-                for i, word in enumerate(words_to_handle)
-            ]
-            start_time = segment_document_words[0]['start_time']
-            keep_cuts = [(round(i['start_time'] - start_time, 3), round(i['end_time'] - start_time, 3)) for i in
-                         words_to_handle]
 
-            merge_cuts = merge_consecutive_cuts(keep_cuts)
-
-            adjusted_words_to_handle = adjust_timestamps(merge_cuts, words_to_handle, start_time)
-
-            max_chars = 15
-            combined_text = ""
-            current_start_time = adjusted_words_to_handle[0]['start_time']
-            current_end_time = adjusted_words_to_handle[0]['end_time']
             texts = []
             start_times = []
             end_times = []
 
-            for index, word in enumerate(adjusted_words_to_handle):
-                word_text = word['word']
-                start_time = word['start_time']
-                end_time = word['end_time']
+            for line in lines:
+                text = " ".join([word['word'] for word in line['words']])
+                texts.append(text.upper())
+                start_times.append(line['start_time'])
+                end_times.append(line['end_time'])
 
-                if len(combined_text) + len(word_text) <= max_chars:
-                    if combined_text:
-                        combined_text += " "
-                    combined_text += word_text
-                    current_end_time = end_time
-                else:
-                    start_times.append(current_start_time)
-                    end_times.append(current_end_time)
-                    texts.append(combined_text)
+                update_message(f"Added line: {text}")
+                update_temp_progress(lines.index(line) / len(lines) * 100, 75, 15)
 
-                    # Reset Variables
-                    combined_text = word_text
-                    current_start_time = start_time
-                    current_end_time = end_time
-                update_message("Added words: " + str(combined_text))
-                update_temp_progress(index / len(adjusted_words_to_handle) * 100, 75, 15)
+            text_additions.append({
+                'type': 'transcript',
+                'texts': texts,
+                'start_times': start_times,
+                'end_times': end_times,
+                'font_scale': 1.9,
+                'thickness': 'Bold',
+                'color': (255, 255, 255),
+                'shadow_color': (0, 0, 0),
+                'shadow_offset': (1, 1),
+                'outline': True,
+                'outline_color': (0, 0, 0),
+                'outline_thickness': 2,
+                'offset': (0, 0)
+            })
 
-            update_message("Adding transcript to video")
-            # update start and end_times  relation to that new clipped video
-            output_path = text_service.add_transcript(
-                input_path=output_path,
-                texts=[i.upper() for i in texts],
-                start_times=start_times,
-                end_times=end_times,
-                font_scale=1.3,
-                thickness='Bold',
-                color=(255, 255, 255),
-                shadow_color=(0, 0, 0),
-                shadow_offset=(1, 1),
-                outline=True,
-                outline_color=(0, 0, 0),
-                outline_thickness=2,
-                offset=(0, 0),
-            )
-
-            update_message("Added transcript")
-            update_progress(95)
+        # Process video with all text additions in one pass
+        update_message("Adding text to video")
+        output_path = text_service.process_video_with_text(input_path, text_additions)
+        update_progress(95)
 
         update_message("Adding audio now")
         short_doc = firebase_service.get_document("shorts", short_id)
@@ -567,7 +546,7 @@ def create_cropped_video(request_id):
                                                             short_doc['temp_audio_file'].split(".")[-1])
         output_path = add_audio_to_video(output_path, audio_path)
 
-        if "background_audio" in short_doc:
+        if "background_audio" in short_doc.keys():
             background_audio = firebase_service.get_document("stock-audio", short_doc['background_audio'])
             temp_audio_location = firebase_service.download_file_to_temp(background_audio['storageLocation'])
             output_path = video_audio_merger.merge_audio_to_video(output_path, temp_audio_location,
@@ -590,7 +569,7 @@ def create_cropped_video(request_id):
         if "uid" in short_doc:
             email = get_user_email(short_doc['uid'])
             email_service = EmailService()
-            email_service.send_video_ready_notification(email, short_doc['short_id'], '')
+            email_service.send_video_ready_notification(email, short_id, '')
 
         return jsonify({
             "status": "success",

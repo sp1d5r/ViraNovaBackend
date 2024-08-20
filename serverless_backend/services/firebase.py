@@ -94,7 +94,7 @@ class FirebaseService:
                 "last_updated": datetime.now()
             })
 
-            print(f"Successfully updated message for {document_id}")
+            print(f"Successfully updated message for {document_id}, {message}")
         except Exception as e:
             print(f"Failed to update message: {str(e)}")
 

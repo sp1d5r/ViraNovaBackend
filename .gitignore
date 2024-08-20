@@ -14,3 +14,5 @@ zappa_settings.json
 *.db
 */tokenoauth.json
 tokenoauth.json
+downloads/
+downloads/*

@@ -23,7 +23,11 @@ class DeepgramTranscriberService:
             update_progress_message("Transcribing audio...")
             update_progress(30)
 
-            response = self.client.listen.prerecorded.v("1").transcribe_url({"url": audio_url}, options)
+            response = self.client.listen.prerecorded.v("1").transcribe_url(
+                {"url": audio_url},
+                options,
+                timeout=300
+            )
 
             update_progress_message("Transcription complete. Processing results...")
             update_progress(80)

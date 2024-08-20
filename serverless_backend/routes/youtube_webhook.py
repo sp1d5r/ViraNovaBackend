@@ -94,7 +94,7 @@ def handle_youtube_webhook():
                 if len(video_exists) == 0:
                     # Add it to the videos documents with status "Loading"
                     video['status'] = "Loading..."
-                    video['uploadTimestamp'] = int(datetime.now().timestamp() * 1_000_000)
+                    video['uploadTimestamp'] = int(datetime.now().timestamp() * 1000)
                     video_document_id = firebase_service.add_document(
                         "videos",
                         video,
