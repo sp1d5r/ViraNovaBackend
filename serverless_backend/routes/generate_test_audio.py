@@ -165,7 +165,7 @@ def generate_test_audio_for_short(request_id, function_called=False):
 
         update_message(f"New combined audio length: {len(combined_audio)}")
 
-        new_blob_location = 'temp-audio/' + "".join(audio_file.split("/")[1:])
+        new_blob_location = 'temp-audio/' + short_id + "".join(audio_file.split("/")[1:])
 
         byte_stream.seek(0)
         file_bytes = byte_stream.read()
