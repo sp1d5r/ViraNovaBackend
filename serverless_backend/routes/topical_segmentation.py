@@ -127,58 +127,47 @@ def create_segments(fixed_length_transcripts, boundaries, video_id, update_progr
     current_words = []
     earliest_start_time = None
     latest_end_time = None
+    MIN_SEGMENT_DURATION = 60  # 1 minute in seconds
 
     update_progress_message("Creating new segments")
 
     for i, (transcript, boundary) in enumerate(zip(fixed_length_transcripts, boundaries)):
-        # Initialize for the first segment or new segment
         update_progress(i / (len(fixed_length_transcripts) - 1) * 100)
 
-        if boundary == 1 or i == 0:
-            if current_segment_transcripts:
-                # Save the previous segment
-                segment = {
-                    'earliest_start_time': earliest_start_time,
-                    'latest_end_time': latest_end_time,
-                    'start_index': min([i['index'] for i in current_words]),
-                    'end_index': max([i['index'] for i in current_words]),
-                    'video_id': video_id,  # This might need to be set differently
-                    'index': len(segments),
-                    'segment_status': "Topical Segment Created",
-                    'previous_segment_status': "Topical Segment Created",
-                    'transcript': " ".join(current_segment_transcripts),
-                    'words': str(current_words)
-                }
-                segments.append(segment)
-                current_segment_transcripts = []
-                current_words = []
-
-            # Reset for new segment
+        # Always add the current transcript to the current segment
+        if earliest_start_time is None:
             earliest_start_time = transcript['start_time']
-            latest_end_time = transcript['end_time']
-            current_segment_transcripts.append(transcript['transcript'])
-            current_words.extend(transcript['words'])
-        else:
-            # Continue with the current segment
-            latest_end_time = max(latest_end_time, transcript['end_time'])
-            current_segment_transcripts.append(transcript['transcript'])
-            current_words.extend(transcript['words'])
+        latest_end_time = transcript['end_time']
+        current_segment_transcripts.append(transcript['transcript'])
+        current_words.extend(transcript['words'])
 
-    # Add the last segment if there are remaining transcripts
-    if current_segment_transcripts:
-        segment = {
-            'earliest_start_time': earliest_start_time,
-            'latest_end_time': latest_end_time,
-            'start_index': min([i['index'] for i in current_words]),
-            'end_index': max([i['index'] for i in current_words]),
-            'video_id': video_id,
-            'index': len(segments),
-            'segment_status': "Topical Segment Created",
-            'previous_segment_status': "Topical Segment Created",
-            'transcript': " ".join(current_segment_transcripts),
-            'words': str(current_words)
-        }
-        segments.append(segment)
+        # Check if we should end the current segment
+        if (boundary == 1 or i == len(fixed_length_transcripts) - 1) and current_segment_transcripts:
+            segment_duration = latest_end_time - earliest_start_time
+
+            # If the segment is too short and it's not the last one, continue to the next iteration
+            if segment_duration < MIN_SEGMENT_DURATION and i < len(fixed_length_transcripts) - 1:
+                continue
+
+            # Create and add the segment
+            segment = {
+                'earliest_start_time': earliest_start_time,
+                'latest_end_time': latest_end_time,
+                'start_index': min([word['index'] for word in current_words]),
+                'end_index': max([word['index'] for word in current_words]),
+                'video_id': video_id,
+                'index': len(segments),
+                'segment_status': "Topical Segment Created",
+                'previous_segment_status': "Topical Segment Created",
+                'transcript': " ".join(current_segment_transcripts),
+                'words': str(current_words)
+            }
+            segments.append(segment)
+
+            # Reset for the next segment
+            current_segment_transcripts = []
+            current_words = []
+            earliest_start_time = None
 
     return segments
 
