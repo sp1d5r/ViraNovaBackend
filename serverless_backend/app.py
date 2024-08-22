@@ -22,6 +22,9 @@ from serverless_backend.routes.generate_a_roll import generate_a_roll
 from serverless_backend.routes.generate_b_roll import generate_b_roll
 from serverless_backend.routes.youtube_link import youtube_link
 from serverless_backend.routes.transcribe_video import transcribe
+from serverless_backend.routes.edit_transcript_v2 import edit_transcript_v2
+from serverless_backend.routes.generate_intro import generate_intro
+from serverless_backend.routes.generate_intro_video import generate_intro_video
 from flask_cors import CORS
 from flask import Flask, request, jsonify, g
 import os
@@ -59,6 +62,7 @@ app.register_blueprint(create_short_video)
 app.register_blueprint(spacial_segmentation)
 app.register_blueprint(youtube_link)
 app.register_blueprint(edit_transcript)
+app.register_blueprint(edit_transcript_v2)
 app.register_blueprint(short_saliency)
 app.register_blueprint(generate_test_audio)
 app.register_blueprint(extract_segment_from_video)
@@ -68,6 +72,8 @@ app.register_blueprint(youtube_webhook)
 app.register_blueprint(generate_a_roll)
 app.register_blueprint(generate_b_roll)
 app.register_blueprint(transcribe)
+app.register_blueprint(generate_intro)
+app.register_blueprint(generate_intro_video)
 
 # App Before/After Hooks
 SERVER_STATUS_COLUMN_NAME = "backend_status"

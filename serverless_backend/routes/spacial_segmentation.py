@@ -1,10 +1,5 @@
-import ast
-from datetime import datetime
-from serverless_backend.routes.generate_test_audio import generate_test_audio_for_short
 from serverless_backend.services.bounding_box_services import smooth_bounding_boxes
-from serverless_backend.services.handle_operations_from_logs import handle_operations_from_logs
 from serverless_backend.services.bounding_box_generator.bounding_boxes import BoundingBoxGenerator
-from serverless_backend.services.parse_segment_words import parse_segment_words
 from serverless_backend.services.verify_video_document import parse_and_verify_short
 from serverless_backend.services.add_text_to_video_service import AddTextToVideoService
 from serverless_backend.services.video_audio_merger import VideoAudioMerger
@@ -12,10 +7,9 @@ from serverless_backend.services.email.brevo_email_service import EmailService
 from serverless_backend.services.firebase import FirebaseService
 from serverless_backend.services.video_analyser.video_analyser import VideoAnalyser
 from firebase_admin import auth, firestore
-import cv2
-import tempfile
 from flask import Blueprint, jsonify
-import json
+
+from serverless_backend.services.video_merger import combine_videos
 
 
 def get_user_email(uid):
@@ -428,8 +422,8 @@ def create_cropped_video(request_id):
         update_progress(30)
 
         # Default branding settings
-        COLOUR = (13, 255, 0)
-        SHADOW_COLOUR = (192, 255, 189)
+        PRIMARY_COLOUR = (0, 255, 0)  # Green
+        SECONDARY_COLOUR = (192, 255, 189)  # Light green
         LOGO = "ViraNova"
 
         # Get user document and update branding if available
@@ -439,71 +433,66 @@ def create_cropped_video(request_id):
             if user_doc:
                 if 'channelName' in user_doc.keys():
                     LOGO = user_doc['channelName']
+                    # If colors are coming from hex strings, convert them correctly
                 if 'primaryColor' in user_doc.keys():
-                    COLOUR = tuple(int(user_doc['primaryColor'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+                    hex_color = user_doc['primaryColor'].lstrip('#')
+                    PRIMARY_COLOUR = tuple(int(hex_color[i:i + 2], 16) for i in (4, 2, 0))  # Convert to BGR
+
                 if 'secondaryColor' in user_doc.keys():
-                    SHADOW_COLOUR = tuple(int(user_doc['secondaryColor'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+                    hex_color = user_doc['secondaryColor'].lstrip('#')
+                    SECONDARY_COLOUR = tuple(int(hex_color[i:i + 2], 16) for i in (4, 2, 0))  # Convert to BGR
 
         # Prepare text additions
         text_additions = []
         if 'short_title_top' in short_doc.keys():
             text_additions.append({
                 'text': short_doc['short_title_top'].upper(),
-                'font_scale': 1.7,
+                'font_scale': 2,
                 'thickness': 'Bold',
                 'color': (255, 255, 255),
+                'static': True,
                 'shadow_color': (0, 0, 0),
                 'shadow_offset': (1, 1),
                 'outline': True,
                 'outline_color': (0, 0, 0),
-                'outline_thickness': 1,
+                'outline_thickness': 3,
                 'offset': (0, 0.15)
             })
 
         if 'short_title_bottom' in short_doc:
             text_additions.append({
                 'text': short_doc['short_title_bottom'].upper(),
-                'font_scale': 1.7,
+                'font_scale': 2,
                 'thickness': 'Bold',
-                'color': COLOUR,
-                'shadow_color': SHADOW_COLOUR,
+                'color': PRIMARY_COLOUR,
+                'static': True,
+                'shadow_color': (0, 0, 0),
                 'shadow_offset': (1, 1),
-                'outline': False,
-                'outline_color': (0, 0, 0),
-                'outline_thickness': 1,
+                'outline': True,
+                'outline_color': SECONDARY_COLOUR,
+                'outline_thickness': 2,
                 'offset': (0, 0.17)
             })
 
         text_additions.append({
             'text': LOGO,
-            'font_scale': 1.5,
+            'font_scale': 1.7,
             'thickness': 'Bold',
-            'color': COLOUR,
+            'color': PRIMARY_COLOUR,
+            'static': True,
             'shadow_color': (0, 0, 0),
             'shadow_offset': (1, 1),
-            'outline': False,
+            'outline': True,
             'outline_color': (0, 0, 0),
-            'outline_thickness': 1,
+            'outline_thickness': 2,
             'offset': (0, 0.1)
         })
 
         # Add transcript if needed
-        add_transcript = True
-        if add_transcript:
-            short_doc = firebase_service.get_document("shorts", short_id)
-            if 'lines' not in short_doc:
-                error_message = "Error: Lines not found in short document"
-                update_message(error_message)
-                firebase_service.update_document("shorts", short_id, {"pending_operation": False})
-                return jsonify({
-                    "status": "error",
-                    "data": {"request_id": request_id, "short_id": short_id, "error": error_message},
-                    "message": "Failed to process transcript"
-                }), 400
-
+        if 'lines' in short_doc:
             lines = short_doc['lines']
             update_message("Processing transcript lines")
-            update_progress(75)
+            update_progress(50)
 
             texts = []
             start_times = []
@@ -511,7 +500,7 @@ def create_cropped_video(request_id):
 
             for line in lines:
                 text = " ".join([word['word'] for word in line['words']])
-                texts.append(text.upper())
+                texts.append(text.lower())  # Changed to lowercase as per your test script
                 start_times.append(line['start_time'])
                 end_times.append(line['end_time'])
 
@@ -523,21 +512,21 @@ def create_cropped_video(request_id):
                 'texts': texts,
                 'start_times': start_times,
                 'end_times': end_times,
-                'font_scale': 1.9,
+                'font_scale': 3,  # Increased as per your test script
                 'thickness': 'Bold',
                 'color': (255, 255, 255),
                 'shadow_color': (0, 0, 0),
                 'shadow_offset': (1, 1),
                 'outline': True,
                 'outline_color': (0, 0, 0),
-                'outline_thickness': 2,
-                'offset': (0, 0)
+                'outline_thickness': 4,  # Increased as per your test script
+                'offset': (0, 0.05)  # Changed as per your test script
             })
 
         # Process video with all text additions in one pass
         update_message("Adding text to video")
         output_path = text_service.process_video_with_text(input_path, text_additions)
-        update_progress(95)
+        update_progress(70)
 
         update_message("Adding audio now")
         short_doc = firebase_service.get_document("shorts", short_id)
@@ -551,6 +540,12 @@ def create_cropped_video(request_id):
             temp_audio_location = firebase_service.download_file_to_temp(background_audio['storageLocation'])
             output_path = video_audio_merger.merge_audio_to_video(output_path, temp_audio_location,
                                                                   short_doc['background_percentage'])
+
+        if "intro_video_path" in short_doc.keys():
+            update_message("Adding intro video")
+            update_progress(80)
+            intro_video_path = firebase_service.download_file_to_temp(short_doc['intro_video_path'])
+            output_path = combine_videos(intro_video_path, output_path)
 
         # Create an output path
         update_message("Added output path to short location")

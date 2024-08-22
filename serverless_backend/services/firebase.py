@@ -103,11 +103,13 @@ class FirebaseService:
         valid_endpoints = [
             "v1/temporal-segmentation",
             "v1/generate-test-audio",
+            "v1/generate-intro",
             "v1/create-short-video",
             "v1/get_saliency_for_short",
             "v1/determine-boundaries",
             "v1/get-bounding-boxes",
             "v1/generate-a-roll",
+            "v1/generate-intro-video"
             "v1/generate-b-roll",
             "v1/create-cropped-video"
         ]

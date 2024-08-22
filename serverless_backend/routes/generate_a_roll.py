@@ -126,7 +126,7 @@ def generate_a_roll_short(request_id):
         if auto_generate:
             print(f"Auto-generate is True, creating request for 'v1/create-cropped-video'")
             firebase_services.create_short_request(
-                "v1/create-cropped-video",
+                "v1/generate-intro-video",
                 short_id,
                 request_doc.get('uid', 'SERVER REQUEST')
             )

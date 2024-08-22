@@ -5,9 +5,11 @@ from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 import subprocess
 
+
 class AddTextToVideoService:
     def __init__(self):
         self.font_base_path = 'serverless_backend/assets/fonts'
+        self.static_overlay = None
 
     def _get_video_info(self, input_path):
         cap = cv2.VideoCapture(input_path)
@@ -39,36 +41,96 @@ class AddTextToVideoService:
 
         return font
 
-    def _process_frame(self, frame, text, font, position, color, shadow_offset, shadow_color, outline, outline_color,
-                       outline_thickness):
-        pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-        draw = ImageDraw.Draw(pil_image)
+    def _create_static_overlay(self, width, height, static_additions):
+        overlay = Image.new('RGBA', (width, height), (255, 255, 255, 0))
+        draw = ImageDraw.Draw(overlay)
 
-        # Draw shadow
-        draw.text((position[0] + shadow_offset[0], position[1] + shadow_offset[1]), text, font=font, fill=shadow_color)
+        for addition in static_additions:
+            text = addition['text']
+            font = addition['font']
+            position = addition['position']
+            color = addition['color']
+            shadow_offset = addition['shadow_offset']
+            shadow_color = addition['shadow_color']
+            outline = addition['outline']
+            outline_color = addition['outline_color']
+            outline_thickness = addition['outline_thickness']
 
-        # Draw outline
-        if outline:
-            for x in range(-outline_thickness, outline_thickness + 1):
-                for y in range(-outline_thickness, outline_thickness + 1):
-                    if x != 0 or y != 0:
-                        draw.text((position[0] + x, position[1] + y), text, font=font, fill=outline_color)
+            # Draw shadow
+            draw.text((position[0] + shadow_offset[0], position[1] + shadow_offset[1]), text, font=font, fill=shadow_color)
 
-        # Draw main text
-        draw.text(position, text, font=font, fill=color)
+            # Draw outline
+            if outline:
+                for x in range(-outline_thickness, outline_thickness + 1):
+                    for y in range(-outline_thickness, outline_thickness + 1):
+                        if x != 0 or y != 0:
+                            draw.text((position[0] + x, position[1] + y), text, font=font, fill=outline_color)
 
-        return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+            # Draw main text
+            draw.text(position, text, font=font, fill=color)
+
+        return np.array(overlay)
+
+    def _process_frame(self, frame, dynamic_additions):
+        # Apply static overlay
+        if self.static_overlay is not None:
+            alpha_channel = self.static_overlay[:, :, 3] / 255.0
+            for c in range(3):
+                frame[:, :, c] = frame[:, :, c] * (1 - alpha_channel) + self.static_overlay[:, :, c] * alpha_channel
+
+        # Process dynamic additions (e.g., transcript)
+        if dynamic_additions:
+            overlay = Image.new('RGBA', (frame.shape[1], frame.shape[0]), (255, 255, 255, 0))
+            draw = ImageDraw.Draw(overlay)
+
+            for addition in dynamic_additions:
+                text = addition['text']
+                font = addition['font']
+                position = addition['position']
+                color = addition['color']
+                shadow_offset = addition['shadow_offset']
+                shadow_color = addition['shadow_color']
+                outline = addition['outline']
+                outline_color = addition['outline_color']
+                outline_thickness = addition['outline_thickness']
+
+                # Draw shadow
+                draw.text((position[0] + shadow_offset[0], position[1] + shadow_offset[1]), text, font=font, fill=shadow_color)
+
+                # Draw outline
+                if outline:
+                    for x in range(-outline_thickness, outline_thickness + 1):
+                        for y in range(-outline_thickness, outline_thickness + 1):
+                            if x != 0 or y != 0:
+                                draw.text((position[0] + x, position[1] + y), text, font=font, fill=outline_color)
+
+                # Draw main text
+                draw.text(position, text, font=font, fill=color)
+
+            # Convert the overlay to numpy array and merge with the frame
+            overlay_array = np.array(overlay)
+            alpha_channel = overlay_array[:, :, 3] / 255.0
+            for c in range(3):
+                frame[:, :, c] = frame[:, :, c] * (1 - alpha_channel) + overlay_array[:, :, c] * alpha_channel
+
+        return frame
 
     def process_video_with_text(self, input_path, text_additions):
         fps, width, height, total_frames = self._get_video_info(input_path)
 
-        # Prepare fonts and positions for all text additions
-        prepared_additions = []
+        # Separate static and dynamic additions
+        static_additions = []
+        dynamic_additions = []
         for addition in text_additions:
             if addition.get('type') == 'transcript':
-                prepared_additions.extend(self._prepare_transcript(addition, width, height, fps))
+                dynamic_additions.extend(self._prepare_transcript(addition, width, height, fps))
+            elif addition.get('static', True):  # Assume static unless specified otherwise
+                static_additions.append(self._prepare_text_addition(addition, width, height))
             else:
-                prepared_additions.append(self._prepare_text_addition(addition, width, height))
+                dynamic_additions.append(self._prepare_text_addition(addition, width, height))
+
+        # Create static overlay
+        self.static_overlay = self._create_static_overlay(width, height, static_additions)
 
         with tempfile.NamedTemporaryFile(suffix='.yuv', delete=False) as raw_file:
             raw_path = raw_file.name
@@ -82,16 +144,20 @@ class AddTextToVideoService:
                 if not ret:
                     break
 
-                for addition in prepared_additions:
-                    if addition['start_frame'] <= frame_count <= addition['end_frame']:
-                        frame = self._process_frame(frame, addition['text'], addition['font'], addition['position'],
-                                                    addition['color'], addition['shadow_offset'],
-                                                    addition['shadow_color'], addition['outline'],
-                                                    addition['outline_color'], addition['outline_thickness'])
+                current_additions = [
+                    addition for addition in dynamic_additions
+                    if addition['start_frame'] <= frame_count <= addition['end_frame']
+                ]
+
+                frame = self._process_frame(frame, current_additions)
 
                 yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420)
                 raw_out.write(yuv.tobytes())
                 frame_count += 1
+
+                # Optional: Print progress
+                if frame_count % 100 == 0:
+                    print(f"Processed {frame_count}/{total_frames} frames")
 
         cap.release()
 

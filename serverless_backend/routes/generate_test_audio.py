@@ -189,7 +189,7 @@ def generate_test_audio_for_short(request_id, function_called=False):
 
         if auto_generate and not function_called:
             firebase_service.create_short_request(
-                "v1/create-short-video",
+                "v1/generate-intro",
                 short_id,
                 request_doc.get('uid', 'SERVER REQUEST')
             )
