@@ -99,27 +99,27 @@ def handle_youtube_webhook():
                         "videos",
                         video,
                     )
+
+                    # Create a new worker task to download the video in 15 minutes from now
+                    current_time = datetime.utcnow()  # Get current UTC time
+                    scheduled_time = current_time + timedelta(minutes=15)
+                    download_task = {
+                        'status': 'Pending',
+                        'scheduledTime': scheduled_time,
+                        'operation': 'Download',
+                        'videoId': video_id,
+                        'channelId': channel_id,
+                        'videoDocumentId': video_document_id
+                    }
+
+                    task_id = firebase_service.add_document(
+                        "tasks",
+                        download_task,
+                    )
+
+                    print(f"Download task {task_id} created for video {video_id}")
                 else:
                     video_document_id = video_exists[0]['id']
-
-                # Create a new worker task to download the video in 15 minutes from now
-                current_time = datetime.utcnow()  # Get current UTC time
-                scheduled_time = current_time + timedelta(minutes=15)
-                download_task = {
-                    'status': 'Pending',
-                    'scheduledTime': scheduled_time,
-                    'operation': 'Download',
-                    'videoId': video_id,
-                    'channelId': channel_id,
-                    'videoDocumentId': video_document_id
-                }
-
-                task_id = firebase_service.add_document(
-                    "tasks",
-                    download_task,
-                )
-
-                print(f"Download task {task_id} created for video {video_id}")
 
                 return '', 204
             except Exception as e:

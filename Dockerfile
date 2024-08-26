@@ -106,6 +106,10 @@ COPY serverless_backend/ /var/task/serverless_backend/
 COPY serverless_backend/ffmpeg /usr/bin
 RUN chmod +x /usr/bin/ffmpeg
 
+# Copy FFPROBE to the user/bin
+COPY serverless_backend/ffprobe /usr/bin
+RUN chmod +x /usr/bin/ffprobe
+
 # Set the PYTHONPATH environment variable to include the serverless-backend directory
 ENV PYTHONPATH=/var/task
 

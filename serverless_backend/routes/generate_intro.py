@@ -12,7 +12,7 @@ from typing import Dict, Tuple
 generate_intro = Blueprint("generate_intro", __name__)
 
 
-def generate_contextual_intro(short_document: Dict, short_doc_id: str, update_progress, update_message) -> Tuple[str, str]:
+def generate_contextual_intro(short_doc_id, context_transcript, update_progress, update_message) -> Tuple[str, str]:
     """
     Generate a contextual introduction for a Short document.
 
@@ -25,29 +25,8 @@ def generate_contextual_intro(short_document: Dict, short_doc_id: str, update_pr
     update_progress(10)
     update_message("Preparing transcript for contextual introduction generation")
 
-    # Extract transcript from lines
-    lines = short_document.get('lines', [])
-    transcript = " ".join([word['word'] for line in lines for word in line['words'] if word.get('isKept', True)])
-
-    short_idea = short_document.get('short_idea', '')
-    short_idea_explanation = short_document.get('short_idea_explanation', '')
-
-    update_progress(30)
-    update_message("Generating contextual introduction")
-
-    # Generate contextual introduction
-    context_result = context_chain.invoke({
-        "transcript": transcript,
-        "short_idea": short_idea,
-        "short_idea_justification": short_idea_explanation
-    })
-
-    update_progress(60)
-    update_message("Contextual introduction generated, preparing for text-to-speech conversion")
-
-    if context_result.needs_context:
-        intro_transcript = context_result.intro_transcript
-
+    if context_transcript:
+        intro_transcript = context_transcript
         # Generate audio file
         update_progress(80)
         update_message("Converting introduction to speech")
@@ -134,21 +113,22 @@ def generate_intro_info(request_id):
             })
             firebase_service.update_message(request_id, message)
 
-        local_audio_path, blob_path = generate_contextual_intro(short_document, short_id, update_progress,
-                                                                update_message)
+        if "context_transcript" in short_document.keys():
+            local_audio_path, blob_path = generate_contextual_intro(short_id, short_document['context_transcript'],  update_progress,
+                                                                    update_message)
 
-        if local_audio_path and blob_path:
-            firebase_service.upload_file_from_temp(local_audio_path, blob_path)
+            if local_audio_path and blob_path:
+                firebase_service.upload_file_from_temp(local_audio_path, blob_path)
 
-            firebase_service.update_document("shorts", short_id, {
-                "intro_audio_path": blob_path,
-                "pending_operation": False,
-                "short_status": "Intro Generated"
-            })
+                firebase_service.update_document("shorts", short_id, {
+                    "intro_audio_path": blob_path,
+                    "pending_operation": False,
+                    "short_status": "Intro Generated"
+                })
 
-            # Clean up the temporary file
-            if os.path.exists(local_audio_path):
-                os.unlink(local_audio_path)
+                # Clean up the temporary file
+                if os.path.exists(local_audio_path):
+                    os.unlink(local_audio_path)
 
         update_message("Temporal segmentation v2 completed successfully")
         update_progress(100)

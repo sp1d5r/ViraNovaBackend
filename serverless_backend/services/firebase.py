@@ -109,14 +109,15 @@ class FirebaseService:
             "v1/determine-boundaries",
             "v1/get-bounding-boxes",
             "v1/generate-a-roll",
-            "v1/generate-intro-video"
+            "v1/generate-intro-video",
+            "v1/generate-intro-video",
             "v1/generate-b-roll",
             "v1/create-cropped-video"
         ]
 
         # Validate endpoint
         if endpoint not in valid_endpoints:
-            raise ValueError(f"Invalid endpoint: {endpoint}")
+            print(f"Invalid endpoint bro... ${endpoint}")
 
         # Create the request document
         request = {

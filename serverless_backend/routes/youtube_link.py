@@ -19,6 +19,19 @@ def begin_youtube_link_download(video_id: str):
                                                                      {'processingProgress': x})
 
         if is_valid_document:
+
+            if 'videoPath' in video_document and 'audio_path' in video_document:
+                update_progress_message("Video already exists. Skipping download.")
+                update_progress(100)
+                return jsonify(
+                    {
+                        "status": "success",
+                        "data": {
+                            "video_id": video_id,
+                        },
+                        "message": "Video already exists. Skipped download."
+                    }), 200
+
             try:
                 firebase_service.update_document('videos', video_id, {'progressMessage': "Downloading Youtube Video"})
 

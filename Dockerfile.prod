@@ -98,6 +98,10 @@ COPY ./serverless_backend/requirements.txt .
 COPY serverless_backend/ffmpeg /usr/bin
 RUN chmod +x /usr/bin/ffmpeg
 
+# Copy FFPROBE to the user/bin
+COPY serverless_backend/ffprobe /usr/bin
+RUN chmod +x /usr/bin/ffprobe
+
 # Install the required packages with increased timeout
 RUN pip install --timeout=100 --no-cache-dir -r requirements.txt
 RUN python -m pip install git+https://github.com/JuanBindez/pytubefix.git

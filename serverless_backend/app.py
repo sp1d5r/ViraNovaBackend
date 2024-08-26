@@ -25,6 +25,7 @@ from serverless_backend.routes.transcribe_video import transcribe
 from serverless_backend.routes.edit_transcript_v2 import edit_transcript_v2
 from serverless_backend.routes.generate_intro import generate_intro
 from serverless_backend.routes.generate_intro_video import generate_intro_video
+from serverless_backend.routes.manual_override_transcript import manual_override_transcript
 from flask_cors import CORS
 from flask import Flask, request, jsonify, g
 import os
@@ -74,6 +75,7 @@ app.register_blueprint(generate_b_roll)
 app.register_blueprint(transcribe)
 app.register_blueprint(generate_intro)
 app.register_blueprint(generate_intro_video)
+app.register_blueprint(manual_override_transcript)
 
 # App Before/After Hooks
 SERVER_STATUS_COLUMN_NAME = "backend_status"

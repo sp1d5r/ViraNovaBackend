@@ -1,8 +1,14 @@
+import os
+import tempfile
+from typing import Dict, Tuple
 from firebase_admin import firestore
 from flask import Blueprint, jsonify
 from serverless_backend.services.firebase import FirebaseService
+from serverless_backend.services.langchain_chains.contextual_introduction.contextual_introduction_chain import \
+    context_chain
 from serverless_backend.services.langchain_chains.crop_segment import requires_cropping_chain, delete_operation_chain
 from serverless_backend.services.langchain_chains.title_generator_chain import title_generator_chain
+from serverless_backend.services.text_to_speech.eleven_labs_tts_service import generate_ai_voiceover
 from serverless_backend.services.verify_video_document import parse_and_verify_short
 from serverless_backend.services.parse_segment_words import parse_segment_words
 from datetime import datetime
@@ -10,6 +16,46 @@ import uuid
 
 edit_transcript = Blueprint("edit_transcript", __name__)
 
+def generate_contextual_intro(short_document: Dict, transcript: str, update_progress, update_message) -> str:
+    """
+    Generate a contextual introduction for a Short document.
+
+    :param short_document: The Short document containing transcript and other metadata
+    :param short_doc_id: The ID of the short document
+    :param update_progress: Function to update the progress
+    :param update_message: Function to update the status message
+    :return: Tuple of (local file path, intended blob path)
+    """
+    try:
+        update_progress(10)
+        update_message("Preparing transcript for contextual introduction generation")
+
+        short_idea = short_document.get('short_idea', '')
+        short_idea_explanation = short_document.get('short_idea_explanation', '')
+
+        update_progress(30)
+        update_message("Generating contextual introduction")
+
+        # Generate contextual introduction
+        context_result = context_chain.invoke({
+            "transcript": transcript,
+            "short_idea": short_idea,
+            "short_idea_justification": short_idea_explanation
+        })
+
+        update_progress(60)
+        update_message("Contextual introduction generated, preparing for text-to-speech conversion")
+
+        if context_result.needs_context:
+            context_result.intro_transcript
+            return context_result.intro_transcript
+        else:
+            update_progress(100)
+            update_message("No contextual introduction needed")
+            return ""
+    except Exception as e:
+        print(f"Error, {e}")
+        return ""
 
 @edit_transcript.route("/v1/temporal-segmentation/<request_id>", methods=['GET'])
 def perform_temporal_segmentation(request_id):
@@ -183,13 +229,18 @@ def perform_temporal_segmentation(request_id):
             "segment_transcript": final_transcript
         })
 
+        # Generating context if needed
+        transcript = " ".join([word['word'] for line in lines for word in line['words'] if word.get('isKept', True)])
+        context_transcript = generate_contextual_intro(short_document, transcript, update_progress, update_message)
+
         # Update short document with new lines, logs, and title
         firebase_service.update_document("shorts", short_id, {
             "lines": lines,
             "logs": logs,
             "short_title_top": title_result.short_title_top,
             "short_title_bottom": title_result.short_title_bottom,
-            "pending_operation": False
+            "pending_operation": False,
+            "context_transcript": context_transcript
         })
 
         update_message(f"Generated title: {title_result.short_title_top} | {title_result.short_title_bottom}")

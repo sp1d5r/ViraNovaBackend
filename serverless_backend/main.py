@@ -23,6 +23,7 @@ from serverless_backend.routes.transcribe_video import transcribe
 from serverless_backend.routes.edit_transcript_v2 import edit_transcript_v2
 from serverless_backend.routes.generate_intro import generate_intro
 from serverless_backend.routes.generate_intro_video import generate_intro_video
+from serverless_backend.routes.manual_override_transcript import manual_override_transcript
 from google.cloud import firestore as fs
 from flask_cors import CORS
 from flask import Flask, request, jsonify, g
@@ -73,6 +74,7 @@ app.register_blueprint(generate_b_roll)
 app.register_blueprint(transcribe)
 app.register_blueprint(generate_intro)
 app.register_blueprint(generate_intro_video)
+app.register_blueprint(manual_override_transcript)
 
 # App Before/After Hooks
 SERVER_STATUS_COLUMN_NAME = "backend_status"
@@ -96,23 +98,6 @@ def verify_jwt(token, secret_key):
 def check_status():
     if request.path == '/youtube-webhook':
         return None
-
-    # Verify request beforehand
-    auth_header = request.headers.get('X-Auth-Token', None)
-    if auth_header:
-        parts = auth_header.split()
-        if parts[0].lower() != 'bearer' or len(parts) == 1 or len(parts) > 2:
-            print('Invalid Authorization header format')
-            return jsonify({'message': 'Invalid Authorization header format'}), 401
-
-        token = parts[1]
-        decoded = verify_jwt(token, SECRET_KEY)
-        if decoded is None:
-            print('Invalid or expired token')
-            return jsonify({'message': 'Invalid or expired token'}), 401
-    else:
-        print('Authorization header missing')
-        return jsonify({'message': 'Authorization header missing'}), 401
 
     video_id = None
     short_id = None

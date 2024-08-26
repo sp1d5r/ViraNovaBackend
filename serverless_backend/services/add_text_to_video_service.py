@@ -10,6 +10,7 @@ class AddTextToVideoService:
     def __init__(self):
         self.font_base_path = 'serverless_backend/assets/fonts'
         self.static_overlay = None
+        self.dynamic_overlay = None
 
     def _get_video_info(self, input_path):
         cap = cv2.VideoCapture(input_path)
@@ -46,33 +47,36 @@ class AddTextToVideoService:
         draw = ImageDraw.Draw(overlay)
 
         for addition in static_additions:
-            text = addition['text']
-            font = addition['font']
-            position = addition['position']
-            color = addition['color']
-            shadow_offset = addition['shadow_offset']
-            shadow_color = addition['shadow_color']
-            outline = addition['outline']
-            outline_color = addition['outline_color']
-            outline_thickness = addition['outline_thickness']
-
-            # Draw shadow
-            draw.text((position[0] + shadow_offset[0], position[1] + shadow_offset[1]), text, font=font, fill=shadow_color)
-
-            # Draw outline
-            if outline:
-                for x in range(-outline_thickness, outline_thickness + 1):
-                    for y in range(-outline_thickness, outline_thickness + 1):
-                        if x != 0 or y != 0:
-                            draw.text((position[0] + x, position[1] + y), text, font=font, fill=outline_color)
-
-            # Draw main text
-            draw.text(position, text, font=font, fill=color)
+            self._draw_text_with_effects(draw, addition)
 
         return np.array(overlay)
 
+    def _draw_text_with_effects(self, draw, addition):
+        text = addition['text']
+        font = addition['font']
+        position = addition['position']
+        color = addition['color']
+        shadow_offset = addition['shadow_offset']
+        shadow_color = addition['shadow_color']
+        outline = addition['outline']
+        outline_color = addition['outline_color']
+        outline_thickness = addition['outline_thickness']
+
+        # Draw shadow
+        draw.text((position[0] + shadow_offset[0], position[1] + shadow_offset[1]), text, font=font, fill=shadow_color)
+
+        # Draw outline
+        if outline:
+            for angle in range(0, 360, 45):
+                x = int(outline_thickness * np.cos(np.radians(angle)))
+                y = int(outline_thickness * np.sin(np.radians(angle)))
+                draw.text((position[0] + x, position[1] + y), text, font=font, fill=outline_color)
+
+        # Draw main text
+        draw.text(position, text, font=font, fill=color)
+
     def _process_frame(self, frame, dynamic_additions):
-        # Apply static overlay
+        # Apply pre-rendered static overlay
         if self.static_overlay is not None:
             alpha_channel = self.static_overlay[:, :, 3] / 255.0
             for c in range(3):
@@ -80,35 +84,18 @@ class AddTextToVideoService:
 
         # Process dynamic additions (e.g., transcript)
         if dynamic_additions:
-            overlay = Image.new('RGBA', (frame.shape[1], frame.shape[0]), (255, 255, 255, 0))
-            draw = ImageDraw.Draw(overlay)
+            if self.dynamic_overlay is None:
+                self.dynamic_overlay = Image.new('RGBA', (frame.shape[1], frame.shape[0]), (255, 255, 255, 0))
+            else:
+                self.dynamic_overlay.paste((255, 255, 255, 0), (0, 0, frame.shape[1], frame.shape[0]))
+
+            draw = ImageDraw.Draw(self.dynamic_overlay)
 
             for addition in dynamic_additions:
-                text = addition['text']
-                font = addition['font']
-                position = addition['position']
-                color = addition['color']
-                shadow_offset = addition['shadow_offset']
-                shadow_color = addition['shadow_color']
-                outline = addition['outline']
-                outline_color = addition['outline_color']
-                outline_thickness = addition['outline_thickness']
-
-                # Draw shadow
-                draw.text((position[0] + shadow_offset[0], position[1] + shadow_offset[1]), text, font=font, fill=shadow_color)
-
-                # Draw outline
-                if outline:
-                    for x in range(-outline_thickness, outline_thickness + 1):
-                        for y in range(-outline_thickness, outline_thickness + 1):
-                            if x != 0 or y != 0:
-                                draw.text((position[0] + x, position[1] + y), text, font=font, fill=outline_color)
-
-                # Draw main text
-                draw.text(position, text, font=font, fill=color)
+                self._draw_text_with_effects(draw, addition)
 
             # Convert the overlay to numpy array and merge with the frame
-            overlay_array = np.array(overlay)
+            overlay_array = np.array(self.dynamic_overlay)
             alpha_channel = overlay_array[:, :, 3] / 255.0
             for c in range(3):
                 frame[:, :, c] = frame[:, :, c] * (1 - alpha_channel) + overlay_array[:, :, c] * alpha_channel
@@ -118,73 +105,59 @@ class AddTextToVideoService:
     def process_video_with_text(self, input_path, text_additions):
         fps, width, height, total_frames = self._get_video_info(input_path)
 
-        # Separate static and dynamic additions
-        static_additions = []
-        dynamic_additions = []
-        for addition in text_additions:
-            if addition.get('type') == 'transcript':
-                dynamic_additions.extend(self._prepare_transcript(addition, width, height, fps))
-            elif addition.get('static', True):  # Assume static unless specified otherwise
-                static_additions.append(self._prepare_text_addition(addition, width, height))
-            else:
-                dynamic_additions.append(self._prepare_text_addition(addition, width, height))
+        static_additions, dynamic_additions = self._prepare_additions(text_additions, width, height, fps)
 
-        # Create static overlay
+        # Create static overlay once
         self.static_overlay = self._create_static_overlay(width, height, static_additions)
 
-        with tempfile.NamedTemporaryFile(suffix='.yuv', delete=False) as raw_file:
-            raw_path = raw_file.name
-
         cap = cv2.VideoCapture(input_path)
-        frame_count = 0
-
-        with open(raw_path, 'wb') as raw_out:
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-
-                current_additions = [
-                    addition for addition in dynamic_additions
-                    if addition['start_frame'] <= frame_count <= addition['end_frame']
-                ]
-
-                frame = self._process_frame(frame, current_additions)
-
-                yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420)
-                raw_out.write(yuv.tobytes())
-                frame_count += 1
-
-                # Optional: Print progress
-                if frame_count % 100 == 0:
-                    print(f"Processed {frame_count}/{total_frames} frames")
-
-        cap.release()
 
         with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as output_file:
             output_path = output_file.name
 
-        ffmpeg_command = [
-            'ffmpeg',
-            '-f', 'rawvideo',
-            '-vcodec', 'rawvideo',
-            '-s', f'{width}x{height}',
-            '-pix_fmt', 'yuv420p',
-            '-r', str(fps),
-            '-i', raw_path,
-            '-c:v', 'libx264',
-            '-preset', 'ultrafast',
-            '-crf', '23',
-            '-y',
-            output_path
-        ]
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
-        subprocess.run(ffmpeg_command, check=True)
+        frame_count = 0
 
-        os.remove(raw_path)
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            current_additions = [
+                addition for addition in dynamic_additions
+                if addition['start_frame'] <= frame_count <= addition['end_frame']
+            ]
+
+            frame = self._process_frame(frame, current_additions)
+            out.write(frame)
+            frame_count += 1
+
+            # Optional: Print progress
+            if frame_count % 100 == 0:
+                print(f"Processed {frame_count}/{total_frames} frames")
+
+        cap.release()
+        out.release()
+
         os.remove(input_path)
         print("All text additions applied to video, original file updated!")
         return output_path
+
+    def _prepare_additions(self, text_additions, width, height, fps):
+        static_additions = []
+        dynamic_additions = []
+
+        for addition in text_additions:
+            if addition.get('type') == 'transcript':
+                dynamic_additions.extend(self._prepare_transcript(addition, width, height, fps))
+            elif addition.get('static', True):
+                static_additions.append(self._prepare_text_addition(addition, width, height))
+            else:
+                dynamic_additions.append(self._prepare_text_addition(addition, width, height))
+
+        return static_additions, dynamic_additions
 
     def _prepare_text_addition(self, addition, width, height):
         font = self._get_font(addition['text'], width, height, addition['thickness'], addition['font_scale'])
