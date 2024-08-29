@@ -112,6 +112,7 @@ def perform_temporal_segmentation(request_id):
 
         def update_progress(progress):
             firebase_service.update_document('shorts', short_id, {'update_progress': progress})
+            firebase_service.update_document("requests", request_id, {"progress": progress})
 
         def update_message(message):
             firebase_service.update_document('shorts', short_id, {
@@ -228,6 +229,8 @@ def perform_temporal_segmentation(request_id):
             "tiktok_idea": short_idea,
             "segment_transcript": final_transcript
         })
+
+        update_progress(100)
 
         # Generating context if needed
         transcript = " ".join([word['word'] for line in lines for word in line['words'] if word.get('isKept', True)])

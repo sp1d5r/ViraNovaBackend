@@ -99,25 +99,38 @@ class FirebaseService:
             print(f"Failed to update message: {str(e)}")
 
     def create_short_request(self, endpoint: str, short_id: str, uid: str):
-        # Define valid endpoints
-        valid_endpoints = [
-            "v1/temporal-segmentation",
-            "v1/generate-test-audio",
-            "v1/generate-intro",
-            "v1/create-short-video",
-            "v1/get_saliency_for_short",
-            "v1/determine-boundaries",
-            "v1/get-bounding-boxes",
-            "v1/generate-a-roll",
-            "v1/generate-intro-video",
-            "v1/generate-intro-video",
-            "v1/generate-b-roll",
-            "v1/create-cropped-video"
-        ]
+        # Define valid endpoints and their associated credit costs
+        valid_endpoints = {
+            "v1/temporal-segmentation": 1,
+            "v1/generate-test-audio": 1,
+            "v1/generate-intro": 1,
+            "v1/create-short-video": 2,
+            "v1/get_saliency_for_short": 2,
+            "v1/determine-boundaries": 1,
+            "v1/get-bounding-boxes": 2,
+            "v1/generate-a-roll": 2,
+            "v1/generate-intro-video": 2,
+            "v1/generate-b-roll": 2,
+            "v1/create-cropped-video": 2
+        }
 
         # Validate endpoint
         if endpoint not in valid_endpoints:
-            print(f"Invalid endpoint bro... ${endpoint}")
+            raise ValueError(f"Invalid endpoint: {endpoint}")
+
+        # Get the credit cost for the endpoint
+        credit_cost = valid_endpoints[endpoint]
+
+        # Check if user has enough credits
+        user_doc = self.db.collection("users").document(uid).get()
+        if not user_doc.exists:
+            raise ValueError(f"User {uid} not found")
+
+        user_data = user_doc.to_dict()
+        user_credits = user_data.get('credits', {}).get('current', 0)
+
+        if user_credits < credit_cost:
+            raise ValueError(f"Insufficient credits to continue autogenerate for request {endpoint} Required: {credit_cost}, Available: {user_credits}")
 
         # Create the request document
         request = {
@@ -125,7 +138,9 @@ class FirebaseService:
             "requestEndpoint": endpoint,
             "requestCreated": fs.SERVER_TIMESTAMP,
             "uid": uid,
-            "shortId": short_id
+            "shortId": short_id,
+            "creditCost": credit_cost,
+            "status": "pending"
         }
 
         print("Creating request", request)

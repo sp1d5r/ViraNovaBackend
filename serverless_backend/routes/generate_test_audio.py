@@ -1,3 +1,5 @@
+import os
+import tempfile
 from io import BytesIO
 import random
 
@@ -95,6 +97,7 @@ def generate_test_audio_for_short(request_id, function_called=False):
 
         audio_file = video_document['audio_path']
 
+
         segment_document = firebase_service.get_document('topical_segments', short_document['segment_id'])
         is_valid_document, error_message = parse_and_verify_segment(segment_document)
 
@@ -134,58 +137,71 @@ def generate_test_audio_for_short(request_id, function_called=False):
             for i, word in enumerate(words_to_handle)
         ]
 
-        update_progress(60)
-        update_message("Download Audio File to Memory")
-        audio_stream = firebase_service.download_file_to_memory(audio_file)
-        update_message("Create temporary audio file")
-        audio_data = AudioSegment.from_file_using_temporary_files(audio_stream)
+        update_message("Starting audio processing")
+        update_progress(20)
 
-        combined_audio = AudioSegment.silent(duration=0)
-        total_length = 0
-        progress = 60
+        video_document = firebase_service.get_document('videos', video_id)
+        audio_file = video_document['audio_path']
 
-        for word in words_to_handle:
+        # Determine the input file extension from the original audio file
+        _, input_extension = os.path.splitext(audio_file)
+        if not input_extension:
+            input_extension = '.mp4'  # Default to .mp4 if no extension is found
+
+        # Download the entire file to a temporary location on disk
+        with tempfile.NamedTemporaryFile(delete=False, suffix=input_extension) as temp_file:
+            firebase_service.download_file(audio_file, temp_file.name)
+            local_audio_path = temp_file.name
+
+        update_message("Audio file downloaded to local storage")
+        update_progress(40)
+        print(local_audio_path)
+
+        # Process audio in chunks
+        combined_audio = AudioSegment.empty()
+        audio = AudioSegment.from_file(local_audio_path, format=input_extension[1:])
+
+        for i, word in enumerate(words_to_handle):
             start_time = int(word['start_time'] * 1000)
             end_time = int(word['end_time'] * 1000)
-            segment_length = end_time - start_time
-            total_length += segment_length
-            segment = audio_data[start_time:end_time]
+
+            segment = audio[start_time:end_time]
             combined_audio += segment
-            progress_update = random.uniform(progress - 0.02 * progress, progress + 0.02 * progress)
-            progress = min(progress_update, 98)
+
+            progress = 40 + (i / len(words_to_handle) * 50)
             update_progress(progress)
-            update_message(f"Appended segment from {start_time} to {end_time}, segment length: {segment_length}, total expected length: {total_length}")
+            update_message(f"Processed segment {i + 1}/{len(words_to_handle)}")
 
-        update_message(f"Final combined length (from segments): {total_length}")
-        update_message(f"Actual combined audio length: {len(combined_audio)}")
+        update_progress(90)
+        update_message("Finalizing audio")
 
-        update_message("Loading the bytes stream")
-        byte_stream = BytesIO()
-        combined_audio.export(byte_stream, format='mp4')
+        # Export the combined audio as MP4
+        new_blob_name = f'temp-audio/{short_id}_output.mp4'
+        output_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+        output_path = output_file.name
+        combined_audio.export(output_path, format="mp4", codec="aac")
 
-        update_message(f"New combined audio length: {len(combined_audio)}")
+        # Upload the result
+        firebase_service.upload_file_from_temp(output_path, new_blob_name)
 
-        new_blob_location = 'temp-audio/' + short_id + "".join(audio_file.split("/")[1:])
+        output_file.close()
 
-        byte_stream.seek(0)
-        file_bytes = byte_stream.read()
-        firebase_service.upload_audio_file_from_memory(new_blob_location, file_bytes)
+        print(output_path)
 
-        update_message("Uploaded Result")
         update_progress(100)
-
-        if auto_generate:
-            firebase_service.update_document("shorts", short_id, {
-                'temp_audio_file': new_blob_location,
-                "pending_operation": False,
-            })
+        update_message("Test audio generation completed successfully")
 
         firebase_service.update_document("shorts", short_id, {
-            'temp_audio_file': new_blob_location,
+            'temp_audio_file': new_blob_name,
             "pending_operation": False,
         })
 
         update_message("Test audio generation completed successfully")
+
+
+        # Clean up
+        os.unlink(local_audio_path)
+
 
         if auto_generate and not function_called:
             firebase_service.create_short_request(
@@ -199,7 +215,7 @@ def generate_test_audio_for_short(request_id, function_called=False):
             "data": {
                 "request_id": request_id,
                 "short_id": short_id,
-                "temp_audio_location": new_blob_location,
+                "temp_audio_location": new_blob_name,
             },
             "message": "Successfully generated audio for clip"
         }), 200

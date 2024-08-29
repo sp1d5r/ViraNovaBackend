@@ -65,6 +65,7 @@ def perform_temporal_segmentation_v2(request_id):
 
         def update_progress(progress):
             firebase_service.update_document('shorts', short_id, {'update_progress': progress})
+            firebase_service.update_document("requests", request_id, {"progress": progress})
 
         def update_message(message):
             firebase_service.update_document('shorts', short_id, {

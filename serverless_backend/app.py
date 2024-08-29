@@ -218,6 +218,8 @@ def update_status(response):
 
     firebase_service = FirebaseService()
 
+    is_successful = 200 <= response.status_code < 300
+
     if video_id:
         firebase_service.update_document("videos", video_id, {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE})
     if segment_id:
@@ -227,16 +229,46 @@ def update_status(response):
         firebase_service.update_document("shorts", short_id,
                                          {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE, "pending_operation": False})
     if request_id:
-        firebase_service.update_document('requests', g.request_id, {
-            'serverCompletedTimestamp': firestore.firestore.SERVER_TIMESTAMP
-        })
-
         request_doc = firebase_service.get_document("requests", request_id)
-        short_id = request_doc['shortId']
+        if request_doc:
+            short_id = request_doc.get('shortId')
+            user_id = request_doc.get('uid')
+            credit_cost = request_doc.get('creditCost', 0)
 
-        firebase_service.update_document("shorts", short_id,
-                                         {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE,
-                                          "pending_operation": False})
+            # Update request document
+            if is_successful:
+                firebase_service.update_document('requests', request_id, {
+                    'serverCompletedTimestamp': firestore.firestore.SERVER_TIMESTAMP,
+                    'status': 'completed',
+                    'creditCost': credit_cost
+                })
+            else:
+                firebase_service.update_document('requests', request_id, {
+                    'serverCompletedTimestamp': firestore.firestore.SERVER_TIMESTAMP,
+                    'status': 'failed',
+                    'creditCost': 0
+                })
+
+            # Update short document
+            if short_id:
+                firebase_service.update_document("shorts", short_id, {
+                    SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE,
+                    "pending_operation": False
+                })
+
+            # Deduct credits from user
+            if user_id and credit_cost > 0:
+                try:
+                    user_doc = firebase_service.get_document("users", user_id)
+                    if user_doc and 'credits' in user_doc and is_successful:
+                        current_credits = user_doc['credits'].get('current', 0)
+                        new_credit_balance = max(current_credits - credit_cost, 0)
+                        firebase_service.update_document("users", user_id, {
+                            'credits.current': new_credit_balance
+                        })
+                        print(f"Credits deducted. New balance for user {user_id}: {new_credit_balance}")
+                except Exception as e:
+                    print(f"Error deducting credits for user {user_id}: {str(e)}")
 
     return response
 
