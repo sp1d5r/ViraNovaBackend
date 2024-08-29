@@ -184,6 +184,7 @@ def get_bounding_boxes(request_id):
             firebase_services.update_message(request_id, message)
 
         auto_generate = short_doc.get('auto_generate', False)
+        selected_box_type = short_doc.get('selected_box_type', 'standard_tiktok')
 
         update_message("Retrieved the document")
         firebase_services.update_document("shorts", short_id, {"pending_operation": True})
@@ -228,7 +229,8 @@ def get_bounding_boxes(request_id):
         interpolated_boxes = {
             "standard_tiktok": [],
             "two_boxes": [],
-            "reaction_box": []
+            "reaction_box": [],
+            "half_screen_box": [],
         }
 
         for i, cut_end in enumerate(cuts + [total_frames]):
@@ -249,7 +251,7 @@ def get_bounding_boxes(request_id):
             short_id,
             {
                 "bounding_boxes": json.dumps(interpolated_boxes),
-                "box_type": ['standard_tiktok' for _ in range(len(interpolated_boxes['standard_tiktok']))],
+                "box_type": [selected_box_type for _ in range(len(interpolated_boxes[selected_box_type]))],
                 "pending_operation": False,
             }
         )

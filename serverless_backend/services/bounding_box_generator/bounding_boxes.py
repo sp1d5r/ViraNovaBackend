@@ -9,6 +9,7 @@ class BoundingBoxGenerator:
         self.step_size = step_size
         self.tiktok_aspect_ratio = 9 / 16  # TikTok aspect ratio (portrait mode)
         self.reaction_aspect_ratio = 16 / 9  # Reaction box aspect ratio
+        self.half_screen_aspect_ratio = 9 / 8  # New half-screen box aspect ratio
 
     def _calculate_integral_image(self, frame):
         """Calculate the integral image of a given frame."""
@@ -119,6 +120,28 @@ class BoundingBoxGenerator:
 
         return best_boxes
 
+    def _find_best_half_screen_box(self, integral_image):
+        """Find the best half-screen box that maximizes the saliency captured."""
+        height, width = integral_image.shape[:2]
+        height -= 1  # Adjust for integral image size
+        width -= 1  # Adjust for integral image size
+
+        # The height of the box should be half of the frame height
+        box_height = height
+        box_width = int(box_height * self.half_screen_aspect_ratio)
+
+        best_box = (0, 0, 0, 0)
+        best_saliency = 0
+
+        for x in range(0, width - box_width + 1, self.step_size):
+            saliency = self._saliency_captured(integral_image, x, 0, x + box_width - 1, box_height - 1)
+
+            if saliency > best_saliency:
+                best_saliency = saliency
+                best_box = (x, 0, box_width, box_height)
+
+        return best_box
+
     def get_total_frames(self, video_path):
         """Get the total number of frames in the video."""
         video = cv2.VideoCapture(video_path)
@@ -129,10 +152,6 @@ class BoundingBoxGenerator:
         total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
         video.release()
         return total_frames
-
-    import numpy as np
-    from scipy.interpolate import interp1d
-    import cv2
 
     def generate_bounding_boxes(self, saliency_video_path, update_progress, skip_frames=2):
         saliency_video = cv2.VideoCapture(saliency_video_path)
@@ -146,7 +165,8 @@ class BoundingBoxGenerator:
         bounding_boxes = {
             "standard_tiktok": [],
             "two_boxes": [],
-            "reaction_box": []
+            "reaction_box": [],
+            "half_screen_box": []
         }
         frame_count = 0
 
@@ -163,6 +183,9 @@ class BoundingBoxGenerator:
                     self._find_best_single_box(integral_image, self.tiktok_aspect_ratio))
                 bounding_boxes["two_boxes"].append(self._find_best_two_boxes(integral_image))
                 bounding_boxes["reaction_box"].append(self._find_best_reaction_box(integral_image))
+                bounding_boxes["half_screen_box"].append(
+                    self._find_best_half_screen_box(integral_image)
+                )
 
                 if frame_count % 100 == 0:
                     progress = (frame_count / total_frames) * 100

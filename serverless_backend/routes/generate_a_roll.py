@@ -44,6 +44,7 @@ def generate_a_roll_short(request_id):
             firebase_services.update_message(request_id, message)
 
         auto_generate = short_doc.get('auto_generate', False)
+        background_video_path = short_doc.get('background_video_path', 'background-gameplay/Clip11.mp4')
 
         update_message("Retrieved the document")
         firebase_services.update_document("shorts", short_id, {"pending_operation": True})
@@ -80,6 +81,11 @@ def generate_a_roll_short(request_id):
             firebase_services.download_file(input_video_path, temp_input_file.name)
             temp_input_path = temp_input_file.name
 
+        # Download the input video to a temporary file
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as temp_input_file:
+            firebase_services.download_file(background_video_path, temp_input_file.name)
+            background_video_path = temp_input_file.name
+
         update_message("Starting video cropping")
         update_progress(40)
 
@@ -87,7 +93,8 @@ def generate_a_roll_short(request_id):
         video_cropper = VideoCropper(
             input_video_path=temp_input_path,
             bounding_boxes=bounding_boxes,
-            frame_types=box_types
+            frame_types=box_types,
+            background_video_path=background_video_path
         )
 
         # Crop the video

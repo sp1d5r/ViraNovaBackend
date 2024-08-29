@@ -7,12 +7,15 @@ import subprocess
 
 class VideoCropper:
     def __init__(self, input_video_path: str, bounding_boxes: Dict[str, List[Tuple[int, int, int, int]]],
-                 frame_types: List[str], skip_frames: int = 0):
+                 frame_types: List[str], skip_frames: int = 0, background_video_path: str = None):
         self.input_video_path = input_video_path
         self.bounding_boxes = bounding_boxes
         self.frame_types = frame_types
         self.skip_frames = skip_frames
+        self.background_video_path = background_video_path
+        self.background_skip_frames = 4
         self.video = None
+        self.background_video = None
         self.fps = None
         self.total_frames = None
         self.width = None
@@ -20,6 +23,7 @@ class VideoCropper:
         self.target_height = 1920  # TikTok video height
         self.target_width = 1080  # TikTok video width
         self.previous_reaction_box = None
+        self.background_frame_count = 0
 
     def _initialize_video(self):
         self.video = cv2.VideoCapture(self.input_video_path)
@@ -29,6 +33,40 @@ class VideoCropper:
         self.total_frames = int(self.video.get(cv2.CAP_PROP_FRAME_COUNT))
         self.width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        if self.background_video_path:
+            self.background_video = cv2.VideoCapture(self.background_video_path)
+            if not self.background_video.isOpened():
+                raise ValueError("Error: Unable to open background video file.")
+
+    def _get_background_frame(self):
+        if self.background_video is None:
+            return None
+
+        for _ in range(self.background_skip_frames):
+            ret, frame = self.background_video.read()
+            self.background_frame_count += 1
+
+            if not ret:
+                self.background_video.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                ret, frame = self.background_video.read()
+                self.background_frame_count = 1
+                break
+
+        if ret:
+            # Resize and crop the background frame to fit the bottom half
+            aspect_ratio = frame.shape[1] / frame.shape[0]
+            target_width = int(self.target_height // 2 * aspect_ratio)
+            frame = cv2.resize(frame, (target_width, self.target_height // 2))
+
+            if target_width > self.target_width:
+                start = (target_width - self.target_width) // 2
+                frame = frame[:, start:start + self.target_width]
+            else:
+                pad = (self.target_width - target_width) // 2
+                frame = cv2.copyMakeBorder(frame, 0, 0, pad, pad, cv2.BORDER_CONSTANT, value=[0, 0, 0])
+
+            return frame
+        return None
 
     def _get_bounding_box(self, frame_idx: int) -> Tuple[str, List[Tuple[int, int, int, int]]]:
         bb_idx = frame_idx // (self.skip_frames + 1)
@@ -50,6 +88,8 @@ class VideoCropper:
             if reaction_box is not None:
                 self.previous_reaction_box = reaction_box
             return frame_type, [main_box, reaction_box]
+        elif frame_type == "half_screen_box":  # Add this new condition
+            return frame_type, [self.bounding_boxes["half_screen_box"][bb_idx]]
         else:
             raise ValueError(f"Unknown frame type: {frame_type}")
 
@@ -177,6 +217,29 @@ class VideoCropper:
             print(f"Error in _process_reaction_box: {str(e)}")
             return None
 
+    def _process_half_screen_box(self, frame: np.ndarray, box: Tuple[int, int, int, int]) -> np.ndarray:
+        try:
+            x, y, w, h = box
+            cropped_frame = frame[y:y + h, x:x + w]
+            if cropped_frame.size == 0:
+                raise ValueError("Cropped frame is empty")
+
+            # Resize the cropped frame to fit the top half of the target frame
+            resized_frame = cv2.resize(cropped_frame, (self.target_width, self.target_height // 2))
+
+            # Get the background frame for the bottom half
+            background_frame = self._get_background_frame()
+            if background_frame is None:
+                background_frame = np.zeros((self.target_height // 2, self.target_width, 3), dtype=np.uint8)
+
+            # Combine the resized frame and the background frame
+            full_frame = np.vstack((resized_frame, background_frame))
+
+            return full_frame
+        except Exception as e:
+            print(f"Error in _process_half_screen_box: {str(e)}")
+            return None
+
     def crop_video(self) -> str:
         self._initialize_video()
 
@@ -213,6 +276,8 @@ class VideoCropper:
                     processed_frame = self._process_picture_in_picture(frame, boxes[0])
                 elif frame_type == "reaction_box":
                     processed_frame = self._process_reaction_box(frame, boxes)
+                elif frame_type == "half_screen_box":
+                    processed_frame = self._process_half_screen_box(frame, boxes[0])
                 else:
                     print(f"Unknown frame type: {frame_type}. Skipping...")
 

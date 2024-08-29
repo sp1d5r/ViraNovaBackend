@@ -63,7 +63,7 @@ def collect_tiktok_data(short_id, task_runner_id):
                 "likes": tiktok_video_analytics[0]['diggCount'],
                 "shares": tiktok_video_analytics[0]['shareCount'],
                 "comments": tiktok_video_analytics[0]['commentCount'],
-                "last_updated": datetime.now().isoformat()
+                "last_updated": datetime.now().time()
             }
             firebase_service.update_document("shorts", short_id, latest_analytics)
 
