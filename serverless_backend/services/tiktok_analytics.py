@@ -60,3 +60,50 @@ class TikTokAnalytics():
             return None
         # Return the JSON response containing the video details
         return response.json()
+
+    def get_tiktok_comments(self, post_url, comments_count):
+        headers = {
+            'Authorization': f'Bearer {self.API_TOKEN}',
+            'Content-Type': 'application/json'
+        }
+        actor_id = 'clockworks~tiktok-comments-scraper'
+        start_endpoint = f'{self.BASE_URL}/acts/{actor_id}/runs'
+
+        payload = {
+            "commentsPerPost": min(comments_count, 50),
+            "maxRepliesPerComment": 0,
+            "postURLs": [post_url]
+        }
+
+        response = requests.post(start_endpoint, json=payload, headers=headers)
+        if response.status_code != 201:
+            print(f'Error: {response.status_code} - {response.text}')
+            return None
+
+        run_data = response.json()
+        run_id = run_data['data']['id']
+        default_dataset_id = run_data['data']['defaultDatasetId']
+
+        status_endpoint = f'{self.BASE_URL}/acts/{actor_id}/runs/{run_id}'
+
+        while True:
+            response = requests.get(status_endpoint, headers=headers)
+            if response.status_code != 200:
+                print(f'Error: {response.status_code} - {response.text}')
+                return None
+            run_status = response.json()['data']['status']
+            if run_status == 'SUCCEEDED':
+                break
+            elif run_status in ['FAILED', 'TIMED-OUT']:
+                print(f'Run failed with status: {run_status}')
+                return None
+            print('Run in progress, waiting...')
+            time.sleep(5)
+
+        dataset_items_endpoint = f'{self.BASE_URL}/datasets/{default_dataset_id}/items'
+        response = requests.get(dataset_items_endpoint, headers=headers)
+        if response.status_code != 200:
+            print(f'Error: {response.status_code} - {response.text}')
+            return None
+
+        return response.json()
