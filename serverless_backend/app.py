@@ -240,13 +240,15 @@ def update_status(response):
                 firebase_service.update_document('requests', request_id, {
                     'serverCompletedTimestamp': firestore.firestore.SERVER_TIMESTAMP,
                     'status': 'completed',
-                    'creditCost': credit_cost
+                    'creditCost': credit_cost,
+                    'progress': 100,
                 })
             else:
                 firebase_service.update_document('requests', request_id, {
                     'serverCompletedTimestamp': firestore.firestore.SERVER_TIMESTAMP,
                     'status': 'failed',
-                    'creditCost': 0
+                    'creditCost': 0,
+                    'progress': 100,
                 })
 
             # Update short document

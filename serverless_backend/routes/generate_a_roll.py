@@ -74,7 +74,20 @@ def generate_a_roll_short(request_id):
         # Prepare input for VideoCropper
         input_video_path = short_doc.get('short_clipped_video')
         if not input_video_path:
-            raise ValueError("No input video path found in the short document")
+            update_message(f"Trimmed video doesn't exist: {error_message}")
+            firebase_services.update_document("shorts", short_id, {
+                "pending_operation": False,
+                "auto_generate": False,
+            })
+            return jsonify({
+                "status": "error",
+                "data": {
+                    "request_id": request_id,
+                    "short_id": short_id,
+                    "error": error_message
+                },
+                "message": "Failed to generate A-roll"
+            }), 400
 
         # Download the input video to a temporary file
         with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as temp_input_file:

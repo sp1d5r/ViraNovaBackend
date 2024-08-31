@@ -16,3 +16,5 @@ zappa_settings.json
 tokenoauth.json
 downloads/
 downloads/*
+test.ipynb
+audio/*

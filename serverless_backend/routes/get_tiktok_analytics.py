@@ -45,7 +45,6 @@ def collect_tiktok_data(short_id, task_runner_id):
                     }), 404
 
             task = {
-                "taskTime": datetime.now(),
                 "shortId": short_id,
                 "videoId": video_id,
                 "tiktokLink": tiktok_link,
@@ -63,7 +62,7 @@ def collect_tiktok_data(short_id, task_runner_id):
                 "likes": tiktok_video_analytics[0]['diggCount'],
                 "shares": tiktok_video_analytics[0]['shareCount'],
                 "comments": tiktok_video_analytics[0]['commentCount'],
-                "last_updated": datetime.now().time()
+                "last_updated": datetime.now()
             }
             firebase_service.update_document("shorts", short_id, latest_analytics)
 
