@@ -180,6 +180,30 @@ class FirebaseService:
         doc_ref.update(update_fields)
         return f"Document {document_id} in {collection_name} updated."
 
+    def upsert_document(self, collection_name, document_id, document_data):
+        """
+        Updates a document if it exists, or inserts a new one if it doesn't.
+
+        :param collection_name: Name of the collection
+        :param document_id: ID of the document to upsert
+        :param document_data: Dictionary containing the document data
+        :return: A tuple (bool, str) indicating success and a message
+        """
+        try:
+            doc_ref = self.db.collection(collection_name).document(document_id)
+            doc = doc_ref.get()
+
+            if doc.exists:
+                # Document exists, update it
+                doc_ref.update(document_data)
+                return True, f"Document {document_id} in {collection_name} updated successfully."
+            else:
+                # Document doesn't exist, create it
+                doc_ref.set(document_data)
+                return True, f"Document {document_id} in {collection_name} created successfully."
+        except Exception as e:
+            return False, f"Error upserting document {document_id} in {collection_name}: {str(e)}"
+
     def upload_audio_file_from_memory(self, blob_name, file_bytes):
         """Uploads a file to Firebase Storage from memory."""
         blob = self.bucket.blob(blob_name)

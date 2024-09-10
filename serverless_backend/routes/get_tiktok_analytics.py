@@ -84,7 +84,7 @@ def collect_tiktok_data(short_id, task_runner_id):
                             "shortId": short_id,
                             "uid": uid,
                         }
-                        firebase_service.add_document("comments", comment_data)
+                        firebase_service.upsert_document("comments", comment['cid'], comment_data)
 
             analytics_id = firebase_service.add_document("analytics", task)
 

@@ -1,58 +1,53 @@
-from beam import App, Runtime, Image
-
-# Methods to interact with Firebase
-import firebase_admin
-from firebase_admin import credentials
-from firebase_admin import firestore
-from firebase_admin import storage
+from beam import Image, endpoint, env, function
+import os
 import base64
 import json
 from datetime import datetime
-import tensorflow as tf
-from huggingface_hub import snapshot_download
-from keras.layers import TFSMLayer
-import time
-from dotenv import load_dotenv
-import cv2
-import numpy as np
 import tempfile
-import os
+import time
 
 
-load_dotenv()
+if env.is_remote():
+    import firebase_admin
+    from firebase_admin import credentials, firestore, storage
+    import tensorflow as tf
+    from huggingface_hub import snapshot_download
+    import numpy as np
+    import cv2
+    from dotenv import load_dotenv
+
+    load_dotenv()
 
 
-app = App(
-    name="saliency-endpoint",
-    runtime=Runtime(
-        cpu=4,
-        memory="30Gi",
-        gpu="T4",
-        image=Image(
-            python_version="python3.9",
-            python_packages=[
-                "firebase-admin",
-                "datetime",
-                "tensorflow",
-                "keras",
-                "huggingface_hub",
-                "python-dotenv",
-                "opencv-python-headless",
-                "numpy"
-            ],
-        ),
-    ),
-)
+def download_models():
+    # Download the model files from Hugging Face
+    hf_dir = snapshot_download(repo_id="alexanderkroner/MSI-Net")
+
+    # Load the model using TensorFlow's saved_model format
+    model = tf.saved_model.load(hf_dir)
+
+    # If the model is not already in SavedModel format, you might need to use:
+    # model = tf.keras.models.load_model(hf_dir)
+
+    # Ensure the model is using GPU
+    physical_devices = tf.config.list_physical_devices('GPU')
+    if len(physical_devices) > 0:
+        tf.config.experimental.set_memory_growth(physical_devices[0], True)
+
+    return model
+
+@function(secrets=["SERVICE_ACCOUNT_ENCODED", "FIREBASE_STORAGE_BUCKET"])
+def get_secrets():
+    return os.getenv('SERVICE_ACCOUNT_ENCODED'), os.getenv('FIREBASE_STORAGE_BUCKET')
 
 
 class FirebaseService:
     def __init__(self):
         # Initialize the app with a service account, granting admin privileges
-        encoded_json_str = os.getenv('SERVICE_ACCOUNT_ENCODED')
+        encoded_json_str, storage_bucket = get_secrets()
         json_str = base64.b64decode(encoded_json_str).decode('utf-8')
         service_account_info = json.loads(json_str)
         self.cred = credentials.Certificate(service_account_info)
-        storage_bucket = os.getenv('FIREBASE_STORAGE_BUCKET')
         if not firebase_admin._apps:
             self.app = firebase_admin.initialize_app(self.cred, {
                 'storageBucket': storage_bucket
@@ -89,12 +84,6 @@ class FirebaseService:
         doc_ref = self.db.collection(collection_name).document(document_id)
         doc_ref.update(update_fields)
         return f"Document {document_id} in {collection_name} updated."
-
-
-def load_models():
-  hf_dir = snapshot_download(repo_id="alexanderkroner/MSI-Net")
-  model = TFSMLayer(hf_dir, call_endpoint='serving_default')
-  return model
 
 
 
@@ -273,52 +262,71 @@ def create_video_from_frames(frames, original_video_path, skip_frames=2):
     return temp_video_path
 
 
-@app.rest_api(loader=load_models)
-def predict(**inputs):
-    if "short_id" not in inputs:
-        return {"Error": "Short ID not found in inputs"}
+@endpoint(
+    name="saliency-endpoint",
+    cpu=4,
+    memory="30Gi",
+    gpu="T4",
+    on_start=download_models,
+    image=Image(
+        python_version="python3.9",
+        python_packages=[
+            "firebase-admin",
+            "tensorflow",
+            "keras",
+            "huggingface_hub",
+            "python-dotenv",
+            "opencv-python-headless",
+            "numpy"
+        ],
+    ),
+    secrets=["FIREBASE_STORAGE_BUCKET", "SERVICE_ACCOUNT_ENCODED"],
+)
+def predict(context, short_id):
+    if env.is_remote():
+        print("Is built with CUDA:", tf.test.is_built_with_cuda())
+        print("Is GPU available:", tf.test.is_gpu_available())
 
-    # Retrieve cached model from loader
-    model = inputs["context"]
+        # Retrieve cached model from on_start function
+        model = context.on_start_value
 
-    # Load in the firebase and download the video
-    firebase_service = FirebaseService()
-    short_id = inputs['short_id']
-    short_document = firebase_service.get_document("shorts", short_id)
+        firebase_service = FirebaseService()
 
-    if not short_document:
-        return {"error_message": "Failed to get the short document"}
+        short_document = firebase_service.get_document("shorts", short_id)
+        if not short_document:
+            return {"error_message": "Failed to get the short document"}
 
-    update_progress = lambda x: firebase_service.update_document("shorts", short_id, {"update_progress": x})
-    update_message = lambda x: firebase_service.update_document("shorts", short_id,
-                                                                {"progress_message": x, "last_updated": datetime.now()})
+        update_progress = lambda x: firebase_service.update_document("shorts", short_id, {"update_progress": x})
+        update_message = lambda x: firebase_service.update_document("shorts", short_id,
+                                                                    {"progress_message": x,
+                                                                     "last_updated": datetime.now()})
 
-    update_message("Downloading the video to temporary location")
-    update_progress(0)
-    video_tmp_location = firebase_service.download_file_to_temp(short_document['short_clipped_video'])
-    firebase_service.update_document('shorts', short_id, {
-        "pending_operations": True
-    })
+        update_message("Downloading the video to temporary location")
+        update_progress(0)
+        video_tmp_location = firebase_service.download_file_to_temp(short_document['short_clipped_video'])
+        firebase_service.update_document('shorts', short_id, {
+            "pending_operations": True
+        })
 
-    # Perform saliency on video
-    update_message("Calculating Saliency")
-    saliency_map = perform_inference_on_video(model, video_tmp_location, update_progress, batch_size=2, skip_frames=2)
+        update_message("Calculating Saliency")
+        saliency_map = perform_inference_on_video(model, video_tmp_location, update_progress, batch_size=2,
+                                                  skip_frames=2)
 
-    # Save the video somewhere
-    update_message("Collapsing saliency into video")
-    output_video_path = create_video_from_frames(saliency_map, video_tmp_location)
+        update_message("Collapsing saliency into video")
+        output_video_path = create_video_from_frames(saliency_map, video_tmp_location)
 
-    # Upload the video back to firebase
-    short_video_path = short_document['short_clipped_video']
-    update_message("Updating document")
-    destination_blob_name = "short-video-saliency/" + short_id + "-" + "".join(short_video_path.split("/")[1:])
+        update_message("Updating document")
+        short_video_path = short_document['short_clipped_video']
+        destination_blob_name = "short-video-saliency/" + short_id + "-" + "".join(short_video_path.split("/")[1:])
 
-    firebase_service.upload_file_from_temp(output_video_path, destination_blob_name)
+        firebase_service.upload_file_from_temp(output_video_path, destination_blob_name)
 
-    firebase_service.update_document('shorts', short_id, {
-        "short_video_saliency": destination_blob_name,
-        "pending_operations": False,
-        "short_status": 'Determine Video Boundaries'
-    })
+        firebase_service.update_document('shorts', short_id, {
+            "short_video_saliency": destination_blob_name,
+            "pending_operations": False,
+            "short_status": 'Determine Video Boundaries'
+        })
 
-    return {"blob_location": destination_blob_name}
+        return {"blob_location": destination_blob_name}
+    else:
+        return {"error": "This function can only be run in a remote environment"}

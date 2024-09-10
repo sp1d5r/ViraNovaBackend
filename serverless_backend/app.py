@@ -253,10 +253,17 @@ def update_status(response):
 
             # Update short document
             if short_id:
-                firebase_service.update_document("shorts", short_id, {
-                    SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE,
-                    "pending_operation": False
-                })
+                if is_successful:
+                    firebase_service.update_document("shorts", short_id, {
+                        SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE,
+                        "pending_operation": False
+                    })
+                else:
+                    firebase_service.update_document("shorts", short_id, {
+                        SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE,
+                        "pending_operation": False,
+                        "auto_generate": False,
+                    })
 
             # Deduct credits from user
             if user_id and credit_cost > 0:

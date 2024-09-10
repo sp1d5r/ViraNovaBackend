@@ -61,7 +61,7 @@ def get_saliency_for_short(request_id):
         headers = {
             "Accept": "*/*",
             "Accept-Encoding": "gzip, deflate",
-            "Authorization": "Basic " + os.getenv("SALIENCY_BEARER_TOKEN") + "=",
+            "Authorization": "Bearer " + os.getenv("SALIENCY_BEARER_TOKEN") + "==",
             "Connection": "keep-alive",
             "Content-Type": "application/json"
         }

@@ -5,7 +5,7 @@ from elevenlabs.client import ElevenLabs
 
 
 class ElevenLabsTTSService:
-    def __init__(self, api_key):
+    def __init__(self, api_key=None):
         self.api_key = os.getenv('ELEVENLABS_API_KEY', api_key)
         if not self.api_key:
             raise ValueError("ELEVENLABS_API_KEY environment variable is not set")
