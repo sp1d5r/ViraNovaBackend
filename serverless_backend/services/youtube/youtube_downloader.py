@@ -1,10 +1,40 @@
 from pytubefix import YouTube
 import pandas as pd
-import subprocess
 from pytubefix.innertube import _default_clients
 import random
 from serverless_backend.services.firebase import FirebaseService
+import subprocess
 import os
+from moviepy.editor import VideoFileClip, AudioFileClip
+
+
+def add_audio_to_video(video_path, audio_path):
+    output_path = video_path.rsplit('.', 1)[0] + '_with_audio.mp4'
+
+    command = [
+        'ffmpeg',
+        '-i', video_path,
+        '-i', audio_path,
+        '-c', 'copy',  # Copy the video codec without re-encoding
+        output_path
+    ]
+
+    try:
+        result = subprocess.run(command, check=True, capture_output=True, text=True)
+        print("FFmpeg output:")
+        print(result.stdout)
+    except subprocess.CalledProcessError as e:
+        print("FFmpeg error output:")
+        print(e.stderr)
+        raise
+
+    # Verify the output file
+    if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+        print(f"Output file created successfully. Size: {os.path.getsize(output_path)} bytes")
+    else:
+        raise Exception("Failed to create output video file with audio")
+
+    return output_path
 
 
 def download_video(video_id, url, update_progress, update_progress_message):
@@ -33,12 +63,21 @@ def download_video(video_id, url, update_progress, update_progress_message):
         yt = YouTube(url, proxies=proxies, use_oauth=True, allow_oauth_cache=True, token_file=token_file)
         update_progress(20)
         update_progress_message("Beginning Download - Highest resolution, you're welcome")
-        video = yt.streams.get_highest_resolution()
 
-        video_path = video.download(output_path="/tmp")  # download video to temp path
+        video_stream = yt.streams.filter(adaptive=True, file_extension='mp4', only_video=True).order_by(
+            'resolution').desc().first()
+        audio_stream = yt.streams.filter(adaptive=True, file_extension='mp4', only_audio=True).order_by(
+            'abr').desc().first()
+
+        print(video_stream)
+        video_path = video_stream.download(filename_prefix="video", output_path='/tmp')
+        print(video_path)
+        audio_path = audio_stream.download(filename_prefix="audio", output_path='/tmp')
+
+        output_path = add_audio_to_video(video_path, audio_path)
+
         update_progress(40)
         update_progress_message("Downloading Audio")
-        audio_path = extract_audio(video_path)
 
         update_progress(70)
         update_progress_message("Downloading transcripts")
@@ -57,7 +96,7 @@ def download_video(video_id, url, update_progress, update_progress_message):
             }
         )
         raise Exception(e)
-    return video_path, audio_path, transcript
+    return output_path, audio_path, transcript
 
 
 def extract_audio(video_path):

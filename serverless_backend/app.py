@@ -204,6 +204,7 @@ def update_status(response):
 
     print("RESPONSE STATUS: ", response.status)
 
+
     try:
         response_data = response.get_json()
         print("RESPONSE DATA: ", response_data)
@@ -221,7 +222,20 @@ def update_status(response):
     is_successful = 200 <= response.status_code < 300
 
     if video_id:
-        firebase_service.update_document("videos", video_id, {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE})
+
+        if is_successful:
+            firebase_service.update_document("videos", video_id, {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE})
+        else:
+
+            firebase_service.update_document("videos", video_id, {
+                SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE,
+                "error": True,
+                "errorMessage": "Failed to process video... Try again?"
+            })
+
+
+
+
     if segment_id:
         firebase_service.update_document("topical_segments", segment_id,
                                          {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_COMPLETE})

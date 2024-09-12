@@ -20,6 +20,16 @@ if env.is_remote():
 
 
 def download_models():
+    gpus = tf.config.experimental.list_physical_devices('GPU')
+    if gpus:
+        try:
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+        except RuntimeError as e:
+            print(e)
+    print("Is built with CUDA:", tf.test.is_built_with_cuda())
+    print("Is GPU available:", tf.test.is_gpu_available())
+    print('GPUs available', tf.config.list_physical_devices('GPU'))
     # Download the model files from Hugging Face
     hf_dir = snapshot_download(repo_id="alexanderkroner/MSI-Net")
 
@@ -88,11 +98,8 @@ class FirebaseService:
 
 
 def perform_inference_on_video(model, video_path, update_progress, batch_size=3, skip_frames=2):
-    # Open the video file
     cap = cv2.VideoCapture(video_path)
-
     total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-
     frames = []
     frame_count = 0
     saliency_maps = []
@@ -103,24 +110,20 @@ def perform_inference_on_video(model, video_path, update_progress, batch_size=3,
         if not ret:
             break
 
-        # Skip frames if necessary
         if frame_count % (skip_frames + 1) != 0:
             frame_count += 1
             continue
 
-        # Convert frame to RGB (OpenCV reads frames in BGR format)
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         frames.append(frame_rgb)
 
-        # If we have enough frames for a batch, process them
         if len(frames) == batch_size:
             batch_saliency_maps = process_batch(model, frames)
             saliency_maps.extend(batch_saliency_maps)
-            frames = []  # Reset the list for the next batch
+            frames = []
         update_progress((frame_count / total_frames) * 100)
         frame_count += 1
 
-    # Process any remaining frames
     if frames:
         batch_saliency_maps = process_batch(model, frames)
         saliency_maps.extend(batch_saliency_maps)
@@ -129,25 +132,36 @@ def perform_inference_on_video(model, video_path, update_progress, batch_size=3,
     elapsed_time = end_time - start_time
     print(f"Time taken to process the video: {elapsed_time} seconds")
 
+    print(f"Number of saliency maps: {len(saliency_maps)}")
+    if saliency_maps:
+        print(f"Shape of first saliency map: {saliency_maps[0].shape}")
+        print(f"Min value: {np.min(saliency_maps)}, Max value: {np.max(saliency_maps)}")
+        print(f"Mean value: {np.mean(saliency_maps)}, Std value: {np.std(saliency_maps)}")
+
     cap.release()
     return saliency_maps
+
 
 def process_batch(model, frames):
     batch_input_tensor, paddings = preprocess_batch(frames)
     output_tensors = model(batch_input_tensor)
 
-    # Use the correct key from the model output
-    if 'layer_from_saved_model' in output_tensors:
-        output_tensors = output_tensors['layer_from_saved_model']
+    if isinstance(output_tensors, dict) and 'output' in output_tensors:
+        output_tensors = output_tensors['output']
+    elif isinstance(output_tensors, tf.Tensor):
+        pass
     else:
-        raise KeyError(f"'layer_from_saved_model' key not found in model output. Available keys: {output_tensors.keys()}")
+        raise KeyError(f"Unexpected output format. Type: {type(output_tensors)}")
 
     batch_saliency_maps = []
     for I, output_tensor in enumerate(output_tensors):
         saliency_map = postprocess_output(
             output_tensor, paddings[I]['vertical'], paddings[I]['horizontal'], frames[I].shape[:2]
         )
+        # Ensure saliency map is between 0 and 1
+        saliency_map = np.clip(saliency_map, 0, 1)
         batch_saliency_maps.append(saliency_map)
+
     return batch_saliency_maps
 
 def preprocess_batch(frames):
@@ -235,30 +249,47 @@ def postprocess_output(output_tensor, vertical_padding, horizontal_padding, orig
 
 
 def create_video_from_frames(frames, original_video_path, skip_frames=2):
-    # Open the original video to get properties
     cap = cv2.VideoCapture(original_video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps /= (skip_frames + 1)
-
     cap.release()
 
     print(f"FPS: {fps}, Width: {frame_width}, Height: {frame_height}")
 
-    # Create a temporary file for the output video
-    temp_video_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+    temp_video_file = tempfile.NamedTemporaryFile(delete=False, suffix='.avi')
     temp_video_path = temp_video_file.name
 
-    out = cv2.VideoWriter(temp_video_path, cv2.VideoWriter_fourcc(*'avc1'), fps, (frame_width, frame_height), isColor=False)
+    # Use MJPG codec for grayscale video
+    fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+    out = cv2.VideoWriter(temp_video_path, fourcc, fps, (frame_width, frame_height), isColor=False)
 
-    for frame in frames:
-        # Ensure the frame is scaled correctly and converted to uint8
-        frame = (frame * 255).astype(np.uint8)
-        out.write(frame)
+    print(f"Number of frames to process: {len(frames)}")
+
+    for i, frame in enumerate(frames):
+        # Ensure frame is 2D (grayscale)
+        if len(frame.shape) > 2:
+            frame = np.mean(frame, axis=2)
+
+        # Clip values between 0 and 1
+        frame = np.clip(frame, 0, 1)
+
+        # Resize if necessary
+        if frame.shape != (frame_height, frame_width):
+            frame = cv2.resize(frame, (frame_width, frame_height))
+
+        # Convert to uint8 for video writing
+        frame_uint8 = (frame * 255).astype(np.uint8)
+
+        print(
+            f"Frame {i} shape: {frame_uint8.shape}, dtype: {frame_uint8.dtype}, min: {np.min(frame_uint8)}, max: {np.max(frame_uint8)}")
+
+        out.write(frame_uint8)
 
     out.release()
     print(f"Video saved to {temp_video_path}")
+    print(f"Output video file size: {os.path.getsize(temp_video_path)} bytes")
     return temp_video_path
 
 
@@ -272,20 +303,29 @@ def create_video_from_frames(frames, original_video_path, skip_frames=2):
         python_version="python3.9",
         python_packages=[
             "firebase-admin",
-            "tensorflow",
+            "tensorflow[and-cuda]",
             "keras",
             "huggingface_hub",
             "python-dotenv",
             "opencv-python-headless",
             "numpy"
         ],
+        base_image="docker.io/nvidia/cuda:12.3.1-runtime-ubuntu20.04",
     ),
     secrets=["FIREBASE_STORAGE_BUCKET", "SERVICE_ACCOUNT_ENCODED"],
 )
 def predict(context, short_id):
     if env.is_remote():
+        gpus = tf.config.experimental.list_physical_devices('GPU')
+        if gpus:
+            try:
+                for gpu in gpus:
+                    tf.config.experimental.set_memory_growth(gpu, True)
+            except RuntimeError as e:
+                print(e)
         print("Is built with CUDA:", tf.test.is_built_with_cuda())
         print("Is GPU available:", tf.test.is_gpu_available())
+        print('GPUs available', tf.config.list_physical_devices('GPU'))
 
         # Retrieve cached model from on_start function
         model = context.on_start_value
@@ -309,7 +349,7 @@ def predict(context, short_id):
         })
 
         update_message("Calculating Saliency")
-        saliency_map = perform_inference_on_video(model, video_tmp_location, update_progress, batch_size=2,
+        saliency_map = perform_inference_on_video(model, video_tmp_location, update_progress, batch_size=16,
                                                   skip_frames=2)
 
         update_message("Collapsing saliency into video")

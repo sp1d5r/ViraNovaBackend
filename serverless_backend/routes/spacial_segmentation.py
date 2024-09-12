@@ -233,6 +233,8 @@ def get_bounding_boxes(request_id):
             "half_screen_box": [],
         }
 
+        update_message("All Bounding Box Types" + str(all_bounding_boxes.keys()))
+
         for i, cut_end in enumerate(cuts + [total_frames]):
             cut_start = cuts[i-1] if i > 0 else 0
             for box_type in interpolated_boxes.keys():

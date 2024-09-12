@@ -1,3 +1,4 @@
+import time
 from datetime import datetime
 import os
 from googleapiclient.discovery import build
@@ -55,6 +56,7 @@ class YouTubeAPIService:
                     'madeForKids': channel_data['status'].get('madeForKids'),
                     'selfDeclaredMadeForKids': channel_data['status'].get('selfDeclaredMadeForKids'),
                     'status': f"Last Collected on {current_time}",
+                    'lastCollected': time.time()
 
                 }
             else:
