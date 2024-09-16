@@ -1,6 +1,5 @@
 from beam import Image, Volume, endpoint, Output, env
 
-
 # This check ensures that the packages are only imported when running this script remotely on Beam
 if env.is_remote():
     from diffusers import StableDiffusionXLPipeline, EulerAncestralDiscreteScheduler
@@ -9,7 +8,6 @@ if env.is_remote():
     from safetensors.torch import load_file
     import os
     import uuid
-
 
 # The container image for the remote runtime
 image = Image(
@@ -33,10 +31,8 @@ MODEL_URL = "https://huggingface.co/martyn/sdxl-turbo-mario-merge-top-rated/blob
 LORA_WEIGHT_NAME = "raw.safetensors"
 LORA_REPO = "ntc-ai/SDXL-LoRA-slider.raw"
 
-
-# This function once when the container first boots
+# This function runs once when the container first boots
 def load_models():
-
     hf_hub_download(repo_id=LORA_REPO, filename=LORA_WEIGHT_NAME, cache_dir=CACHE_PATH)
 
     pipe = StableDiffusionXLPipeline.from_single_file(
@@ -58,7 +54,7 @@ def load_models():
     gpu="A10G",
     volumes=[Volume(name="models", mount_path=CACHE_PATH)],
 )
-def generate(context, prompt="medieval rich kingpin sitting in a tavern, raw"):
+def generate(context, prompt="medieval rich kingpin sitting in a tavern, raw", setup="portrait", num_generations=1):
     # Retrieve pre-loaded model from loader
     pipe = context.on_start_value
 
@@ -78,20 +74,31 @@ def generate(context, prompt="medieval rich kingpin sitting in a tavern, raw"):
     # Activate the LoRA
     pipe.set_adapters(["raw"], adapter_weights=[2.0])
 
-    # Generate image
-    image = pipe(
-        prompt,
-        negative_prompt="nsfw",
-        width=1080,
-        height=1920,
-        guidance_scale=2,
-        num_inference_steps=10,
-    ).images[0]
+    # Set image dimensions based on setup
+    if setup == "portrait":
+        width, height = 1080, 1920
+    elif setup == "landscape":
+        width, height = 1920, 1080
+    else:  # square
+        width, height = 1080, 1080
 
-    # Save image file
-    output = Output.from_pil_image(image).save()
+    image_urls = []
 
-    # Retrieve pre-signed URL for output file
-    url = output.public_url()
+    for _ in range(num_generations):
+        # Generate image
+        image = pipe(
+            prompt,
+            width=width,
+            height=height,
+            guidance_scale=2,
+            num_inference_steps=10,
+        ).images[0]
 
-    return {"image": url}
+        # Save image file
+        output = Output.from_pil_image(image).save()
+
+        # Retrieve pre-signed URL for output file
+        url = output.public_url()
+        image_urls.append(url)
+
+    return {"images": image_urls}

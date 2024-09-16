@@ -76,7 +76,9 @@ def build_docker_image(repository_uri, dockerfile_path="Dockerfile"):
         "YOUTUBE_API_KEY": os.getenv("YOUTUBE_API_KEY"),
         "BREVO_API_KEY": os.getenv("BREVO_API_KEY"),
         "DEEP_GRAM_API_KEY": os.getenv("DEEP_GRAM_API_KEY"),
-        "ELEVENLABS_API_KEY": os.getenv("ELEVENLABS_API_KEY")
+        "ELEVENLABS_API_KEY": os.getenv("ELEVENLABS_API_KEY"),
+        "BEAM_BEARER_TOKEN": os.getenv("BEAM_BEARER_TOKEN"),
+        "IMAGE_GENERATOR_ENDPOINT": os.getenv("IMAGE_GENERATOR_ENDPOINT"),
     }
     build_args = {k: v for k, v in env_vars.items() if v is not None}
 

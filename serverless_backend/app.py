@@ -1,6 +1,7 @@
 import awsgi
 from firebase_admin import firestore
 
+from serverless_backend.routes.generate_image import generate_images
 from serverless_backend.routes.generate_short_ideas import generate_short_ideas
 from serverless_backend.routes.deprecated.get_random_video import get_random_video
 from serverless_backend.routes.deprecated.get_segmentation_masks import get_segmentation_mask
@@ -17,6 +18,8 @@ from serverless_backend.routes.get_saliency_for_short import short_saliency
 from serverless_backend.routes.generate_test_audio import generate_test_audio
 from serverless_backend.routes.extract_segment_from_video import extract_segment_from_video
 from serverless_backend.routes.add_channel import add_channel
+from serverless_backend.routes.wyr.generate_video_ideas import generate_video_ideas
+from serverless_backend.routes.wyr.new_wyr_video import new_wyr_video
 from serverless_backend.routes.youtube_webhook import youtube_webhook
 from serverless_backend.routes.generate_a_roll import generate_a_roll
 from serverless_backend.routes.generate_b_roll import generate_b_roll
@@ -76,6 +79,11 @@ app.register_blueprint(transcribe)
 app.register_blueprint(generate_intro)
 app.register_blueprint(generate_intro_video)
 app.register_blueprint(manual_override_transcript)
+app.register_blueprint(generate_images)
+app.register_blueprint(new_wyr_video)
+
+# Would You Rather
+app.register_blueprint(generate_video_ideas)
 
 # App Before/After Hooks
 SERVER_STATUS_COLUMN_NAME = "backend_status"
@@ -179,19 +187,19 @@ def check_status():
             'serverStartedTimestamp': firestore.firestore.SERVER_TIMESTAMP
         })
 
+        if "shortId" in request_doc.keys():
+            short_id = request_doc['shortId']
 
-        short_id = request_doc['shortId']
-
-        short_document = firebase_service.get_document("shorts", short_id)
-        status = short_document.get(SERVER_STATUS_COLUMN_NAME, SERVER_STATUS_PENDING)
-        print("Status:", status)
-        if status == SERVER_STATUS_PROCESSING:
-            firebase_service.update_message(request_id,  f'Task already {status.lower()}. Please wait or check the result.')
-            return jsonify({'message': f'Task already {status.lower()}. Please wait or check the result.'}), 400
-        else:
-            # Set the status to 'Processing' and save it in the request context
-            firebase_service.update_document('shorts', short_id, {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_PROCESSING})
-            g.short_document = short_document
+            short_document = firebase_service.get_document("shorts", short_id)
+            status = short_document.get(SERVER_STATUS_COLUMN_NAME, SERVER_STATUS_PENDING)
+            print("Status:", status)
+            if status == SERVER_STATUS_PROCESSING:
+                firebase_service.update_message(request_id,  f'Task already {status.lower()}. Please wait or check the result.')
+                return jsonify({'message': f'Task already {status.lower()}. Please wait or check the result.'}), 400
+            else:
+                # Set the status to 'Processing' and save it in the request context
+                firebase_service.update_document('shorts', short_id, {SERVER_STATUS_COLUMN_NAME: SERVER_STATUS_PROCESSING})
+                g.short_document = short_document
 
         g.request_document = request_doc
         g.request_id = request_id
@@ -232,8 +240,6 @@ def update_status(response):
                 "error": True,
                 "errorMessage": "Failed to process video... Try again?"
             })
-
-
 
 
     if segment_id:

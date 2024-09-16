@@ -168,11 +168,23 @@ class FirebaseService:
         blob.upload_from_filename(file_path)
         os.remove(file_path)
 
-    def upload_file_from_memory(self, in_memory_file, destination_blob_name):
+    def upload_file_from_memory(self, file_data, destination_blob_name):
         """Uploads a file from memory to Firebase Storage."""
         blob = self.bucket.blob(destination_blob_name)
-        in_memory_file.seek(0)  # Move to the beginning of the BytesIO buffer
-        blob.upload_from_file(in_memory_file)
+        if isinstance(file_data, bytes):
+            # If it's already bytes, upload directly
+            blob.upload_from_string(file_data)
+        else:
+            # If it's a file-like object, try to upload from file
+            try:
+                file_data.seek(0)  # Move to the beginning of the file-like object
+                blob.upload_from_file(file_data)
+            except Exception as e:
+                print(f'Failed to upload: {str(e)}')
+                # If seeking fails, try to read the content and upload as string
+                file_data.seek(0)
+                content = file_data.read()
+                blob.upload_from_string(content)
 
     def update_document(self, collection_name, document_id, update_fields):
         """Updates specific fields of a document."""
