@@ -18,6 +18,30 @@ db = firestore.Client()
 # Backend service URL
 BACKEND_SERVICE_URL = os.environ.get('BACKEND_SERVICE_URL', 'https://get-fucked-buddy.com/process-task')
 JWT_SECRET_KEY = os.getenv("SECRET_KEY")
+WEBHOOK_URL = os.getenv('BACKEND_SERVICE_URL') + "/youtube-webhook"
+HUB_URL = 'https://pubsubhubbub.appspot.com/subscribe'
+
+
+def subscribe_to_channel(channel_id):
+    topic_url = f'https://www.youtube.com/xml/feeds/videos.xml?channel_id={channel_id}'
+    data = {
+        'hub.callback': WEBHOOK_URL,
+        'hub.topic': topic_url,
+        'hub.verify': 'sync',
+        'hub.mode': 'subscribe',
+    }
+
+    try:
+        response = requests.post(HUB_URL, data=data)
+        return {
+            'status_code': response.status_code,
+            'headers': dict(response.headers),
+            'text': response.text
+        }
+    except Exception as e:
+        return {
+            'error': str(e)
+        }
 
 
 @functions_framework.http
@@ -97,7 +121,37 @@ def check_and_process_tasks(request):
                     })
                     print(f"Failed to process task {task.id}: {response.text}")
 
+            elif task_data.get('operation') == 'Re-Subscribe':
+                channel_id = task_data.get('channelId')
+                if channel_id:
+                    result = subscribe_to_channel(channel_id)
+
+                    # Update task with the result
+                    task.reference.update({
+                        'status': 'Complete',
+                        'processingEndTime': firestore.SERVER_TIMESTAMP,
+                        'resubscribeResult': result
+                    })
+
+                    if result.get('status_code') == 202 or result.get('status_code') == 200:
+                        print(f"Successfully re-subscribed to channel {channel_id}")
+                    else:
+                        print(f"Failed to re-subscribe to channel {channel_id}. Result: {result}")
+
+                    processed_tasks += 1
+                else:
+                    task.reference.update({
+                        'status': 'Failed',
+                        'processingEndTime': firestore.SERVER_TIMESTAMP,
+                        'error': 'Missing channel_id'
+                    })
+
         except requests.RequestException as e:
+            task.reference.update({
+                'status': 'Failed',
+                'processingEndTime': firestore.SERVER_TIMESTAMP,
+                'error': str(e)
+            })
             print(f"Error calling backend service for task {task.id}: {str(e)}")
 
     return f"Processed {processed_tasks} tasks"

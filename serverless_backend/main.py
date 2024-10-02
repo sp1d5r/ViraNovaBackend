@@ -6,6 +6,7 @@ from serverless_backend.routes.deprecated.get_random_video import get_random_vid
 from serverless_backend.routes.deprecated.get_segmentation_masks import get_segmentation_mask
 from serverless_backend.routes.deprecated.get_shorts_and_segments import get_shorts_and_segments
 from serverless_backend.routes.get_tiktok_analytics import tiktok_analytics
+from serverless_backend.routes.query.query_catalog import query_catalog
 from serverless_backend.routes.spacial_segmentation import spacial_segmentation
 from serverless_backend.routes.summarise_segments import summarise_segments
 from serverless_backend.routes.create_short_video import create_short_video
@@ -80,6 +81,7 @@ app.register_blueprint(generate_intro)
 app.register_blueprint(generate_intro_video)
 app.register_blueprint(manual_override_transcript)
 app.register_blueprint(generate_images)
+app.register_blueprint(query_catalog)
 
 # Would You Rather
 app.register_blueprint(generate_video_ideas)

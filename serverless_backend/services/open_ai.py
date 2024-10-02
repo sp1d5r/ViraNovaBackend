@@ -156,3 +156,17 @@ class OpenAIService():
 
         response = json.loads(completion.choices[0].message.tool_calls[0].function.arguments)
         return response
+
+    def get_embedding(self, text):
+        try:
+            response = self.client.embeddings.create(
+                input=text,
+                model="text-embedding-3-small"
+            )
+            embedding_response = response.json()
+            embedding_json = json.loads(embedding_response)
+            embedding_vector = embedding_json['data'][0]['embedding']
+            return embedding_vector
+        except Exception as e:
+            print(f"An error occurred while getting the embedding: {str(e)}")
+            return None

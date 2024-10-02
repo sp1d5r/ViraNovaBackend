@@ -168,6 +168,7 @@ prompt_toolkit==3.0.47
 proto-plus==1.23.0
 protobuf==4.25.2
 psutil==5.9.8
+pymilvus
 psycopg2-binary==2.9.9
 ptyprocess==0.7.0
 pure-eval==0.2.2

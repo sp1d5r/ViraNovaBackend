@@ -1,8 +1,10 @@
+import time
 from datetime import datetime, timedelta
 from flask import Blueprint, request, abort
 import xml.etree.ElementTree as ET
 from serverless_backend.services.youtube.youtube_api import YouTubeAPIService
 from serverless_backend.services.firebase import FirebaseService
+from google.cloud import firestore
 
 
 youtube_webhook = Blueprint("youtube_webhook", __name__)
@@ -94,7 +96,7 @@ def handle_youtube_webhook():
                 if len(video_exists) == 0:
                     # Add it to the videos documents with status "Loading"
                     video['status'] = "Loading..."
-                    video['uploadTimestamp'] = datetime.now().time()
+                    video['uploadTimestamp'] = int(time.time() * 1000)
                     video_document_id = firebase_service.add_document(
                         "videos",
                         video,

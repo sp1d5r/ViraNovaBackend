@@ -253,7 +253,7 @@ def get_bounding_boxes(request_id):
             short_id,
             {
                 "bounding_boxes": json.dumps(interpolated_boxes),
-                "box_type": [selected_box_type for _ in range(len(interpolated_boxes[selected_box_type]))],
+                "box_type": [selected_box_type for _ in range(len(interpolated_boxes['standard_tiktok']))],
                 "pending_operation": False,
             }
         )

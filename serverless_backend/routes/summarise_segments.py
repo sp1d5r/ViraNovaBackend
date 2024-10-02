@@ -4,6 +4,8 @@ from serverless_backend.services.email.brevo_email_service import EmailService
 from serverless_backend.services.firebase import FirebaseService
 from serverless_backend.services.open_ai import OpenAIService
 from firebase_admin import auth
+
+from serverless_backend.services.vector_db.ziliz import ZilizVectorDB
 from serverless_backend.services.verify_video_document import parse_and_verify_video
 
 summarise_segments = Blueprint("summarise_segments", __name__)
@@ -57,6 +59,7 @@ def summarise_segments_for_transcript(video_id):
         # Access video document and verify existance
         firebase_service = FirebaseService()
         open_ai_service = OpenAIService()
+        ziliz_vector_db = ZilizVectorDB()
         video_document = firebase_service.get_document("videos", video_id)
         is_valid_document, error_message = parse_and_verify_video(video_document)
         update_progress_message = lambda x: firebase_service.update_document('videos', video_id,
@@ -94,6 +97,11 @@ def summarise_segments_for_transcript(video_id):
                                                     "sexual": content_moderation['sexual'],
                                                     "sexual_minors": content_moderation['sexual_minors'],
                                                   })
+                segment['segment_summary'] = segment_summary
+                segment['segment_title'] = segment_title
+                segment_text = ziliz_vector_db.generate_segment_text(segment)
+                ziliz_vector_db.get_embedding_and_upload_to_segments(segment_text, segment['id'], segment['video_id'], video_document['channelId'])
+
 
             update_progress_message("Segments Summarised!")
 

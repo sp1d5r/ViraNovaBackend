@@ -79,6 +79,8 @@ def build_docker_image(repository_uri, dockerfile_path="Dockerfile"):
         "ELEVENLABS_API_KEY": os.getenv("ELEVENLABS_API_KEY"),
         "BEAM_BEARER_TOKEN": os.getenv("BEAM_BEARER_TOKEN"),
         "IMAGE_GENERATOR_ENDPOINT": os.getenv("IMAGE_GENERATOR_ENDPOINT"),
+        "ZILIZ_CLUSTER_TOKEN": os.getenv('ZILIZ_CLUSTER_TOKEN'),
+        "ZILIZ_CLUSTER_ENDPOINT": os.getenv('ZILIZ_CLUSTER_ENDPOINT')
     }
     build_args = {k: v for k, v in env_vars.items() if v is not None}
 

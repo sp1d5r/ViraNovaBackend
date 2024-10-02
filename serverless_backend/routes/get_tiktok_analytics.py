@@ -55,6 +55,7 @@ def collect_tiktok_data(short_id, task_runner_id):
             tiktok_video_analytics = tiktok_analytics.get_tiktok_video_details(tiktok_link)
 
             task['videoAnalytics'] = tiktok_video_analytics
+            task['taskTime'] = datetime.now()
 
             # Update short document with latest analytics
             latest_analytics = {
@@ -64,6 +65,7 @@ def collect_tiktok_data(short_id, task_runner_id):
                 "comments": tiktok_video_analytics[0]['commentCount'],
                 "last_updated": datetime.now()
             }
+
             firebase_service.update_document("shorts", short_id, latest_analytics)
 
             # Collect comments if there's more than one
